@@ -25,10 +25,9 @@ CAPIENZA_FILE = {
     "Quarta Fila": 8,
     "Quinta Fila": 8,
     "Sesta Fila (Altre)": 8,
-    "Spiaggia Libera / Esterna": 20 # <--- Aggiunto per le postazioni extra!
+    "Spiaggia Libera / Esterna": 20
 }
 
-# Date stagioni (Anno, Mese, Giorno)
 STAGIONI_DATE = {
     "Alta A": [(date(2026, 6, 20), date(2026, 7, 3))],
     "Alta B": [(date(2026, 7, 4), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
@@ -38,7 +37,6 @@ STAGIONI_DATE = {
 
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
-# Formato: "Fila": {"Feriale": [Prezzo, Suppl. 4° pax], "Festivo": [Prezzo, Suppl. 4° pax]}
 TARIFFE = {
     "Alta A": {
         "Prima Fila": {"Feriale": [38, 8], "Festivo": [40, 10]},
@@ -78,7 +76,6 @@ TARIFFE = {
     }
 }
 
-# Prezzi generici per risorse extra (da aggiornare in base al listino reale se variano)
 PREZZI_EXTRA = {
     "Lettino Singolo": 12,
     "Ombrellone Singolo Libera": 25,
@@ -130,18 +127,19 @@ def carica_prenotazioni():
     if os.path.exists(FILE_PRENOTAZIONI):
         df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
         
-        # FIX DELL'ERRORE: Inserisce le colonne mancanti in modo sicuro
         if "Hotel" not in df.columns: df["Hotel"] = ""
         if "Persone" not in df.columns: df["Persone"] = 2
         if "Durata" not in df.columns: df["Durata"] = "Giornata Intera"
         if "Extra" not in df.columns: df["Extra"] = ""
+        if "Nome" not in df.columns: df["Nome"] = "" 
         
         df["Hotel"] = df["Hotel"].fillna("")
         df["Persone"] = df["Persone"].fillna(2)
         df["Durata"] = df["Durata"].fillna("Giornata Intera")
         df["Extra"] = df["Extra"].fillna("")
+        df["Nome"] = df["Nome"].fillna("")
         return df
-    return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Telefono", "Stato", "Prezzo_Giorno", "Hotel", "Persone", "Durata", "Extra"])
+    return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Hotel", "Persone", "Durata", "Extra"])
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
@@ -158,32 +156,40 @@ with st.sidebar.form("form_prenotazione"):
     input_fila = st.selectbox("Fila", list(CAPIENZA_FILE.keys()))
     max_ombrelloni_riga = CAPIENZA_FILE[input_fila]
     
-    input_ombrellone = st.number_input(f"N° Ombrellone (Max {max_ombrelloni_riga})", min_value=1, max_value=max_ombrelloni_riga, step=1)
+    # --- NOVITÀ: SCELTA MULTIPLA OMBRELLONI ---
+    col_q, col_omb = st.columns(2)
+    with col_q:
+        quantita_postazioni = st.number_input("Quante postazioni vicine?", min_value=1, max_value=3, value=1)
+    
+    max_start = max_ombrelloni_riga - quantita_postazioni + 1
+    with col_omb:
+        input_ombrellone = st.number_input(f"N° Ombrellone Iniziale (Max {max_start})", min_value=1, max_value=max_start, step=1)
         
     st.markdown("---")
-    input_telefono = st.text_input("Telefono Cliente (Anagrafica Unica)").strip()
+    
+    input_telefono = st.text_input("Telefono Cliente (Opzionale)").strip()
     
     nome_automatico = ""
     if input_telefono and not df_clienti.empty:
         cliente_esistente = df_clienti[df_clienti['Telefono'] == input_telefono]
         if not cliente_esistente.empty:
             nome_automatico = cliente_esistente.iloc[0]['Nome']
-            st.sidebar.info(f"👤 Trovato: {nome_automatico}")
+            st.sidebar.info(f"👤 Trovato in anagrafica: {nome_automatico}")
             
-    input_nome = st.text_input("Nome Cliente", value=nome_automatico)
+    input_nome = st.text_input("Nome Cliente (Obbligatorio)", value=nome_automatico).strip()
     input_hotel = st.text_input("Nome Hotel (Opzionale)")
     
     st.markdown("---")
     col_p, col_d = st.columns(2)
     with col_p:
-        input_persone = st.number_input("Persone (Max 4)", min_value=1, max_value=4, value=2)
+        input_persone = st.number_input("Persone (PER OMBRELLONE)", min_value=1, max_value=4, value=2)
     with col_d:
         input_durata = st.selectbox("Durata", ["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"])
     
     if input_persone == 4:
-        st.warning("⚠️ 4 Persone: Scatta il supplemento automatico!")
+        st.warning("⚠️ 4 Persone ad ombrellone: Scatta il supplemento!")
         
-    input_extra = st.multiselect("🏖️ Risorse Aggiuntive Libere", list(PREZZI_EXTRA.keys()))
+    input_extra = st.multiselect("🏖️ Risorse Aggiuntive Libere (per postazione)", list(PREZZI_EXTRA.keys()))
     
     st.markdown("---")
     input_stato = st.selectbox(
@@ -191,21 +197,22 @@ with st.sidebar.form("form_prenotazione"):
         ["In Attesa (Giallo)", "Confermato (Rosso)", "Pagato (Blu)", "Libero/No-Show (Verde)"]
     )
     
-    prezzo_consigliato = 0.0
+    prezzo_consigliato_totale = 0.0
     if len(date_selezionate) > 0:
-        prezzo_consigliato = calcola_prezzo_automatico(date_selezionate[0], input_fila, input_persone, input_durata, input_extra)
+        prezzo_unitario = calcola_prezzo_automatico(date_selezionate[0], input_fila, input_persone, input_durata, input_extra)
+        prezzo_consigliato_totale = prezzo_unitario * quantita_postazioni
         
-    input_prezzo = st.number_input("Prezzo Giornaliero (€)", min_value=0.0, value=float(prezzo_consigliato), step=1.0)
+    input_prezzo = st.number_input("Prezzo Giornaliero TOTALE (€)", min_value=0.0, value=float(prezzo_consigliato_totale), step=1.0)
     
     submit = st.form_submit_button("Applica Modifiche")
 
 # --- LOGICA DI SALVATAGGIO ---
 if submit:
-    if len(date_selezionate) > 0 and input_telefono:
+    if len(date_selezionate) > 0 and input_nome:
         data_inizio = date_selezionate[0]
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
         
-        if input_nome:
+        if input_telefono:
             if input_telefono in df_clienti['Telefono'].values:
                 df_clienti.loc[df_clienti['Telefono'] == input_telefono, 'Nome'] = input_nome
             else:
@@ -218,43 +225,52 @@ if submit:
             giorno_corrente_obj = data_inizio + timedelta(days=i)
             giorno_corrente_str = giorno_corrente_obj.strftime("%Y-%m-%d")
             
-            prezzo_giorno_specifico = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
-            prezzo_finale = input_prezzo if input_prezzo != prezzo_consigliato else prezzo_giorno_specifico
+            prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
+            prezzo_teorico_totale = prezzo_giorno_unitario * quantita_postazioni
             
-            df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == input_ombrellone) & (df_pren['Fila'] == input_fila))]
+            # Se cambi il prezzo a mano, lo divide equamente per ogni ombrellone salvato
+            if input_prezzo != prezzo_consigliato_totale:
+                prezzo_finale_unitario = input_prezzo / quantita_postazioni
+            else:
+                prezzo_finale_unitario = prezzo_giorno_unitario
             
-            if "Libero" not in input_stato:
-                stato_pulito = input_stato.split(" ")[0]
-                if stato_pulito == "In":
-                    stato_pulito = "Attesa"
-                    
-                nuova_p = pd.DataFrame([{
-                    "Data": giorno_corrente_str,
-                    "Fila": input_fila,
-                    "Ombrellone": input_ombrellone,
-                    "Telefono": input_telefono,
-                    "Stato": stato_pulito,
-                    "Prezzo_Giorno": prezzo_finale,
-                    "Hotel": str(input_hotel).strip(),
-                    "Persone": input_persone,
-                    "Durata": input_durata,
-                    "Extra": ", ".join(input_extra)
-                }])
-                df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
+            # Ciclo per salvare tutti gli ombrelloni vicini scelti
+            for j in range(quantita_postazioni):
+                omb_corrente = input_ombrellone + j
+                
+                df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == omb_corrente) & (df_pren['Fila'] == input_fila))]
+                
+                if "Libero" not in input_stato:
+                    stato_pulito = input_stato.split(" ")[0]
+                    if stato_pulito == "In":
+                        stato_pulito = "Attesa"
+                        
+                    nuova_p = pd.DataFrame([{
+                        "Data": giorno_corrente_str,
+                        "Fila": input_fila,
+                        "Ombrellone": omb_corrente,
+                        "Nome": input_nome,
+                        "Telefono": input_telefono,
+                        "Stato": stato_pulito,
+                        "Prezzo_Giorno": prezzo_finale_unitario,
+                        "Hotel": str(input_hotel).strip(),
+                        "Persone": input_persone,
+                        "Durata": input_durata,
+                        "Extra": ", ".join(input_extra)
+                    }])
+                    df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
                 
         df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-        st.sidebar.success("✅ Salvato con successo!")
+        st.sidebar.success(f"✅ {quantita_postazioni} postazioni salvate con successo!")
         st.rerun()
     else:
-        st.sidebar.error("⚠️ Inserisci Data e Telefono.")
+        st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente (il telefono è opzionale).")
 
 # --- MAPPA VISIVA ---
 data_visiva = st.date_input("Seleziona data del planning:", date.today())
 data_visiva_str = data_visiva.strftime("%Y-%m-%d")
 
 df_oggi = df_pren[df_pren['Data'] == data_visiva_str]
-if not df_oggi.empty and not df_clienti.empty:
-    df_oggi = pd.merge(df_oggi, df_clienti, on="Telefono", how="left")
 
 def controlla_posto(numero_ombrellone, fila):
     if df_oggi.empty:
@@ -264,11 +280,17 @@ def controlla_posto(numero_ombrellone, fila):
         return "#28a745", "Libero", "", ""
         
     stato = record.iloc[0]['Stato']
-    nome_c = record.iloc[0]['Nome']
     prezzo_g = record.iloc[0]['Prezzo_Giorno']
     pers = record.iloc[0].get('Persone', 2)
     durata = record.iloc[0].get('Durata', "")
     extra = record.iloc[0].get('Extra', "")
+    
+    nome_c = record.iloc[0].get('Nome', "")
+    telefono_c = record.iloc[0].get('Telefono', "")
+    if not nome_c and telefono_c and not df_clienti.empty:
+        cerca_cliente = df_clienti[df_clienti['Telefono'] == telefono_c]
+        if not cerca_cliente.empty:
+            nome_c = cerca_cliente.iloc[0]['Nome']
     
     badge_durata = "🌗" if "Mezza" in str(durata) else ""
     badge_extra = "➕" if extra else ""
