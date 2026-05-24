@@ -83,6 +83,9 @@ PREZZI_EXTRA = {
     "Telo Mare Extra": 5
 }
 
+# Dizionario per i mesi in italiano
+MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
+
 def trova_stagione(data_sel):
     for stagione, intervalli in STAGIONI_DATE.items():
         for inizio, fine in intervalli:
@@ -151,12 +154,12 @@ df_pren = carica_prenotazioni()
 st.sidebar.header("📝 Gestione Prenotazioni")
 
 with st.sidebar.form("form_prenotazione"):
-    date_selezionate = st.date_input("Intervallo Date (Arrivo e Partenza)", [])
+    # FORMATO ITALIANO AGGIUNTO QUI (DD/MM/YYYY)
+    date_selezionate = st.date_input("Intervallo Date (Arrivo e Partenza)", [], format="DD/MM/YYYY")
     
     input_fila = st.selectbox("Fila", list(CAPIENZA_FILE.keys()))
     max_ombrelloni_riga = CAPIENZA_FILE[input_fila]
     
-    # --- NOVITÀ: SCELTA MULTIPLA OMBRELLONI ---
     col_q, col_omb = st.columns(2)
     with col_q:
         quantita_postazioni = st.number_input("Quante postazioni vicine?", min_value=1, max_value=3, value=1)
@@ -226,15 +229,12 @@ if submit:
             giorno_corrente_str = giorno_corrente_obj.strftime("%Y-%m-%d")
             
             prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
-            prezzo_teorico_totale = prezzo_giorno_unitario * quantita_postazioni
             
-            # Se cambi il prezzo a mano, lo divide equamente per ogni ombrellone salvato
             if input_prezzo != prezzo_consigliato_totale:
                 prezzo_finale_unitario = input_prezzo / quantita_postazioni
             else:
                 prezzo_finale_unitario = prezzo_giorno_unitario
             
-            # Ciclo per salvare tutti gli ombrelloni vicini scelti
             for j in range(quantita_postazioni):
                 omb_corrente = input_ombrellone + j
                 
@@ -264,13 +264,19 @@ if submit:
         st.sidebar.success(f"✅ {quantita_postazioni} postazioni salvate con successo!")
         st.rerun()
     else:
-        st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente (il telefono è opzionale).")
+        st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente.")
 
 # --- MAPPA VISIVA ---
-data_visiva = st.date_input("Seleziona data del planning:", date.today())
+# FORMATO ITALIANO AGGIUNTO ANCHE QUI
+data_visiva = st.date_input("Seleziona data del planning:", date.today(), format="DD/MM/YYYY")
 data_visiva_str = data_visiva.strftime("%Y-%m-%d")
 
 df_oggi = df_pren[df_pren['Data'] == data_visiva_str]
+
+# TITOLO IN ITALIANO (Es. "Planning del 8 Agosto 2026")
+data_formattata_ita = f"{data_visiva.day} {MESI_ITA[data_visiva.month]} {data_visiva.year}"
+st.header(f"📅 Planning del {data_formattata_ita}")
+st.divider()
 
 def controlla_posto(numero_ombrellone, fila):
     if df_oggi.empty:
