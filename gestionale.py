@@ -83,7 +83,6 @@ PREZZI_EXTRA = {
     "Telo Mare Extra": 5
 }
 
-# Dizionario per i mesi in italiano
 MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
 def trova_stagione(data_sel):
@@ -150,11 +149,33 @@ st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
 
+# --- 🔍 NUOVO MOTORE DI RICERCA ---
+with st.expander("🔍 Cerca Cliente / Verifica Prenotazione", expanded=False):
+    ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Mario, 340123..., Miramare").strip()
+    if ricerca:
+        if not df_pren.empty:
+            # Cerca la parola in Nome, Telefono o Hotel, ignorando maiuscole/minuscole
+            mask_nome = df_pren['Nome'].astype(str).str.contains(ricerca, case=False, na=False)
+            mask_tel = df_pren['Telefono'].astype(str).str.contains(ricerca, case=False, na=False)
+            mask_hotel = df_pren['Hotel'].astype(str).str.contains(ricerca, case=False, na=False)
+            
+            risultati = df_pren[mask_nome | mask_tel | mask_hotel].sort_values(by="Data")
+            
+            if not risultati.empty:
+                st.success(f"Trovate {len(risultati)} prenotazioni per '{ricerca}':")
+                colonne_mostrate = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Prezzo_Giorno"]
+                st.dataframe(risultati[colonne_mostrate], use_container_width=True)
+            else:
+                st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
+        else:
+            st.info("Nessuna prenotazione presente nel sistema al momento.")
+
+st.divider()
+
 # --- BARRA LATERALE: INSERIMENTO E MODIFICA ---
 st.sidebar.header("📝 Gestione Prenotazioni")
 
 with st.sidebar.form("form_prenotazione"):
-    # FORMATO ITALIANO AGGIUNTO QUI (DD/MM/YYYY)
     date_selezionate = st.date_input("Intervallo Date (Arrivo e Partenza)", [], format="DD/MM/YYYY")
     
     input_fila = st.selectbox("Fila", list(CAPIENZA_FILE.keys()))
@@ -261,19 +282,17 @@ if submit:
                     df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
                 
         df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-        st.sidebar.success(f"✅ {quantita_postazioni} postazioni salvate con successo!")
+        st.sidebar.success(f"✅ Salvataggio completato!")
         st.rerun()
     else:
         st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente.")
 
 # --- MAPPA VISIVA ---
-# FORMATO ITALIANO AGGIUNTO ANCHE QUI
 data_visiva = st.date_input("Seleziona data del planning:", date.today(), format="DD/MM/YYYY")
 data_visiva_str = data_visiva.strftime("%Y-%m-%d")
 
 df_oggi = df_pren[df_pren['Data'] == data_visiva_str]
 
-# TITOLO IN ITALIANO (Es. "Planning del 8 Agosto 2026")
 data_formattata_ita = f"{data_visiva.day} {MESI_ITA[data_visiva.month]} {data_visiva.year}"
 st.header(f"📅 Planning del {data_formattata_ita}")
 st.divider()
@@ -342,4 +361,4 @@ if not df_oggi.empty:
         colonne_tabella.insert(4, "Hotel")
     st.dataframe(df_oggi[colonne_tabella], use_container_width=True)
 else:
-    st.info("Nessuna prenotazione registrata.")
+    st.info("Nessuna prenotazione registrata per la data di oggi.")
