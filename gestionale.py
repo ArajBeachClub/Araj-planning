@@ -85,6 +85,16 @@ PREZZI_EXTRA = {
 
 MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
+# --- MAPPA STATI ---
+STATI_MAP = {
+    "In Attesa (Giallo)": "Attesa",
+    "Confermato (Rosso)": "Confermato",
+    "Pagato (Blu)": "Pagato",
+    "Liberato Solo Mattina (Rivendibile)": "Libero_Mat",
+    "Liberato Solo Pomeriggio (Rivendibile)": "Libero_Pom",
+    "Completamente Libero / Cancella (Verde)": "Libero"
+}
+
 def trova_stagione(data_sel):
     for stagione, intervalli in STAGIONI_DATE.items():
         for inizio, fine in intervalli:
@@ -174,33 +184,29 @@ st.divider()
 # --- BARRA LATERALE: INSERIMENTO E MODIFICA ---
 st.sidebar.header("📝 Gestione Prenotazioni")
 
-# 1. VERIFICA DISPONIBILITÀ (Spostato fuori dal form per renderlo in tempo reale)
+# 1. VERIFICA DISPONIBILITÀ 
 st.sidebar.subheader("1. Scegli Date e Fila")
 date_selezionate = st.sidebar.date_input("Intervallo Date (Arrivo e Partenza)", [], format="DD/MM/YYYY")
 input_fila = st.sidebar.selectbox("Fila", list(CAPIENZA_FILE.keys()))
 max_ombrelloni_riga = CAPIENZA_FILE[input_fila]
 
-# Logica di calcolo degli ombrelloni liberi
 ombrelloni_liberi = []
 if len(date_selezionate) > 0:
     data_inizio = date_selezionate[0]
     data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
     giorni_totali = (data_fine - data_inizio).days + 1
     
-    # Genera l'elenco di tutti i giorni selezionati
     date_range = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
     
-    # Controlla quali ombrelloni sono occupati in QUELLA fila per ALMENO UN GIORNO in quel range
     df_occupati = df_pren[(df_pren['Data'].isin(date_range)) & (df_pren['Fila'] == input_fila)]
     ombrelloni_occupati = df_occupati['Ombrellone'].unique()
     
-    # Crea la lista dei liberi
     ombrelloni_liberi = [i for i in range(1, max_ombrelloni_riga + 1) if i not in ombrelloni_occupati]
     
     if ombrelloni_liberi:
-        st.sidebar.success(f"✅ Liberi in queste date:\n {', '.join(map(str, ombrelloni_liberi))}")
+        st.sidebar.success(f"✅ Liberi intera giornata:\n {', '.join(map(str, ombrelloni_liberi))}")
     else:
-        st.sidebar.error("❌ Tutto esaurito in questa fila per le date scelte!")
+        st.sidebar.error("❌ Tutto esaurito (intera giornata) in questa fila!")
 
 # 2. MODULO DI INSERIMENTO DATI
 st.sidebar.subheader("2. Completa Prenotazione")
@@ -211,7 +217,6 @@ with st.sidebar.form("form_prenotazione"):
     
     max_start = max_ombrelloni_riga - quantita_postazioni + 1
     with col_omb:
-        # L'operatore guarda il riquadro verde sopra e scrive qui il numero
         input_ombrellone = st.number_input(f"N° Ombrellone Iniziale", min_value=1, max_value=max_start, value=1, step=1)
         
     st.markdown("---")
@@ -241,10 +246,8 @@ with st.sidebar.form("form_prenotazione"):
     input_extra = st.multiselect("🏖️ Risorse Aggiuntive Libere (per postazione)", list(PREZZI_EXTRA.keys()))
     
     st.markdown("---")
-    input_stato = st.selectbox(
-        "Stato Postazione", 
-        ["In Attesa (Giallo)", "Confermato (Rosso)", "Pagato (Blu)", "Libero/No-Show (Verde)"]
-    )
+    # NUOVO MENU STATI CON RIVENDITA
+    input_stato = st.selectbox("Stato Postazione", list(STATI_MAP.keys()))
     
     prezzo_consigliato_totale = 0.0
     if len(date_selezionate) > 0:
@@ -253,6 +256,9 @@ with st.sidebar.form("form_prenotazione"):
         
     input_prezzo = st.number_input("Prezzo Giornaliero TOTALE (€)", min_value=0.0, value=float(prezzo_consigliato_totale), step=1.0)
     
+    st.markdown("---")
+    forza_sovrascrittura = st.checkbox("⚠️ Consenti Sovrascrittura (Da spuntare se stai rimpiazzando o aggiornando qualcuno)")
+    
     submit = st.form_submit_button("Applica Modifiche")
 
 # --- LOGICA DI SALVATAGGIO ---
@@ -260,55 +266,75 @@ if submit:
     if len(date_selezionate) > 0 and input_nome:
         data_inizio = date_selezionate[0]
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
-        
-        if input_telefono:
-            if input_telefono in df_clienti['Telefono'].values:
-                df_clienti.loc[df_clienti['Telefono'] == input_telefono, 'Nome'] = input_nome
-            else:
-                nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
-                df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
-            df_clienti.to_csv(FILE_CLIENTI, index=False)
-            
         giorni_totali = (data_fine - data_inizio).days + 1
-        for i in range(giorni_totali):
-            giorno_corrente_obj = data_inizio + timedelta(days=i)
-            giorno_corrente_str = giorno_corrente_obj.strftime("%Y-%m-%d")
+        
+        # CONTROLLO OVERBOOKING
+        date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
+        ombrelloni_richiesti = [input_ombrellone + j for j in range(quantita_postazioni)]
+        
+        sovrapposizioni = df_pren[
+            (df_pren['Data'].isin(date_list_str)) & 
+            (df_pren['Fila'] == input_fila) & 
+            (df_pren['Ombrellone'].isin(ombrelloni_richiesti))
+        ]
+        
+        stato_pulito = STATI_MAP[input_stato]
+        
+        if not sovrapposizioni.empty and not forza_sovrascrittura and stato_pulito != "Libero":
+            st.sidebar.error("🚨 ERRORE: POSTAZIONE GIÀ OCCUPATA!")
+            for _, row_conf in sovrapposizioni.drop_duplicates(subset=['Ombrellone', 'Nome']).iterrows():
+                d = row_conf['Data']
+                d_ita = f"{d[8:10]}/{d[5:7]}/{d[0:4]}"
+                st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
             
-            prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
-            
-            if input_prezzo != prezzo_consigliato_totale:
-                prezzo_finale_unitario = input_prezzo / quantita_postazioni
-            else:
-                prezzo_finale_unitario = prezzo_giorno_unitario
-            
-            for j in range(quantita_postazioni):
-                omb_corrente = input_ombrellone + j
+            st.sidebar.info("💡 Se vuoi rivendere questo ombrellone a un nuovo cliente, spunta la casella '⚠️ Consenti Sovrascrittura' e ripremi il bottone.")
+        
+        else:
+            # SALVATAGGIO 
+            if input_telefono:
+                if input_telefono in df_clienti['Telefono'].values:
+                    df_clienti.loc[df_clienti['Telefono'] == input_telefono, 'Nome'] = input_nome
+                else:
+                    nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
+                    df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
+                df_clienti.to_csv(FILE_CLIENTI, index=False)
                 
-                df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == omb_corrente) & (df_pren['Fila'] == input_fila))]
+            for i in range(giorni_totali):
+                giorno_corrente_obj = data_inizio + timedelta(days=i)
+                giorno_corrente_str = giorno_corrente_obj.strftime("%Y-%m-%d")
                 
-                if "Libero" not in input_stato:
-                    stato_pulito = input_stato.split(" ")[0]
-                    if stato_pulito == "In":
-                        stato_pulito = "Attesa"
-                        
-                    nuova_p = pd.DataFrame([{
-                        "Data": giorno_corrente_str,
-                        "Fila": input_fila,
-                        "Ombrellone": omb_corrente,
-                        "Nome": input_nome,
-                        "Telefono": input_telefono,
-                        "Stato": stato_pulito,
-                        "Prezzo_Giorno": prezzo_finale_unitario,
-                        "Hotel": str(input_hotel).strip(),
-                        "Persone": input_persone,
-                        "Durata": input_durata,
-                        "Extra": ", ".join(input_extra)
-                    }])
-                    df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
+                prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
                 
-        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-        st.sidebar.success(f"✅ Salvataggio completato!")
-        st.rerun()
+                if input_prezzo != prezzo_consigliato_totale:
+                    prezzo_finale_unitario = input_prezzo / quantita_postazioni
+                else:
+                    prezzo_finale_unitario = prezzo_giorno_unitario
+                
+                for j in range(quantita_postazioni):
+                    omb_corrente = input_ombrellone + j
+                    
+                    # Elimina la vecchia registrazione
+                    df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == omb_corrente) & (df_pren['Fila'] == input_fila))]
+                    
+                    if stato_pulito != "Libero":
+                        nuova_p = pd.DataFrame([{
+                            "Data": giorno_corrente_str,
+                            "Fila": input_fila,
+                            "Ombrellone": omb_corrente,
+                            "Nome": input_nome,
+                            "Telefono": input_telefono,
+                            "Stato": stato_pulito,
+                            "Prezzo_Giorno": prezzo_finale_unitario,
+                            "Hotel": str(input_hotel).strip(),
+                            "Persone": input_persone,
+                            "Durata": input_durata,
+                            "Extra": ", ".join(input_extra)
+                        }])
+                        df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
+                    
+            df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+            st.sidebar.success(f"✅ Salvataggio completato con successo!")
+            st.rerun()
     else:
         st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente.")
 
@@ -324,10 +350,10 @@ st.divider()
 
 def controlla_posto(numero_ombrellone, fila):
     if df_oggi.empty:
-        return "#28a745", "Libero", "", ""
+        return "#28a745", "Libero", "", "", ""
     record = df_oggi[(df_oggi['Ombrellone'] == numero_ombrellone) & (df_oggi['Fila'] == fila)]
     if record.empty:
-        return "#28a745", "Libero", "", ""
+        return "#28a745", "Libero", "", "", ""
         
     stato = record.iloc[0]['Stato']
     prezzo_g = record.iloc[0]['Prezzo_Giorno']
@@ -350,26 +376,36 @@ def controlla_posto(numero_ombrellone, fila):
     hotel_html = f"<span style='font-size: 11px; color: #ffe8a1; display: block;'>🏨 {hotel_c}</span>" if hotel_c else ""
     
     dettagli = f"€{prezzo_g:.0f} | 👤 {pers} {badge_durata}{badge_extra}"
+    badge_rivendibile = ""
+    colore_box = "#28a745"
     
     if stato == "Attesa":
-        return "#ffc107", f"{nome_c}", dettagli, hotel_html
+        colore_box = "#ffc107"
     elif stato == "Confermato":
-        return "#dc3545", f"{nome_c}", dettagli, hotel_html
+        colore_box = "#dc3545"
     elif stato == "Pagato":
-        return "#007bff", f"{nome_c}", dettagli, hotel_html
-    return "#28a745", "Libero", "", ""
+        colore_box = "#007bff"
+    elif stato == "Libero_Mat":
+        colore_box = "#17a2b8"
+        badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌅 LIBERO MATTINA</span><br>"
+    elif stato == "Libero_Pom":
+        colore_box = "#17a2b8"
+        badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌇 LIBERO POMERIGG.</span><br>"
+
+    return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile
 
 for nome_fila, max_posti in CAPIENZA_FILE.items():
     st.subheader(nome_fila)
     colonne_griglia = st.columns(max_posti) 
     for i in range(max_posti):
         numero_omb = i + 1
-        colore_box, titolo, sottotitolo, hotel_str = controlla_posto(numero_omb, nome_fila)
+        colore_box, titolo, sottotitolo, hotel_str, badge_rivend = controlla_posto(numero_omb, nome_fila)
         
         box_html = f"""
         <div style="background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);">
             <span style="font-size: 14px; font-weight: bold;">{numero_omb}</span><br>
             <hr style="margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);">
+            {badge_rivend}
             <span style="font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{titolo}</span>
             <span style="font-size: 10px; font-weight: normal; display: block;">{sottotitolo}</span>
             {hotel_str}
