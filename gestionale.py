@@ -246,7 +246,6 @@ with st.sidebar.form("form_prenotazione"):
     input_extra = st.multiselect("🏖️ Risorse Aggiuntive Libere (per postazione)", list(PREZZI_EXTRA.keys()))
     
     st.markdown("---")
-    # NUOVO MENU STATI CON RIVENDITA
     input_stato = st.selectbox("Stato Postazione", list(STATI_MAP.keys()))
     
     prezzo_consigliato_totale = 0.0
@@ -268,7 +267,6 @@ if submit:
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
         giorni_totali = (data_fine - data_inizio).days + 1
         
-        # CONTROLLO OVERBOOKING
         date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
         ombrelloni_richiesti = [input_ombrellone + j for j in range(quantita_postazioni)]
         
@@ -290,7 +288,6 @@ if submit:
             st.sidebar.info("💡 Se vuoi rivendere questo ombrellone a un nuovo cliente, spunta la casella '⚠️ Consenti Sovrascrittura' e ripremi il bottone.")
         
         else:
-            # SALVATAGGIO 
             if input_telefono:
                 if input_telefono in df_clienti['Telefono'].values:
                     df_clienti.loc[df_clienti['Telefono'] == input_telefono, 'Nome'] = input_nome
@@ -313,7 +310,6 @@ if submit:
                 for j in range(quantita_postazioni):
                     omb_corrente = input_ombrellone + j
                     
-                    # Elimina la vecchia registrazione
                     df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == omb_corrente) & (df_pren['Fila'] == input_fila))]
                     
                     if stato_pulito != "Libero":
@@ -401,16 +397,9 @@ for nome_fila, max_posti in CAPIENZA_FILE.items():
         numero_omb = i + 1
         colore_box, titolo, sottotitolo, hotel_str, badge_rivend = controlla_posto(numero_omb, nome_fila)
         
-        box_html = f"""
-        <div style="background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);">
-            <span style="font-size: 14px; font-weight: bold;">{numero_omb}</span><br>
-            <hr style="margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);">
-            {badge_rivend}
-            <span style="font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;">{titolo}</span>
-            <span style="font-size: 10px; font-weight: normal; display: block;">{sottotitolo}</span>
-            {hotel_str}
-        </div>
-        """
+        # Blocco HTML schiacciato per evitare problemi di lettura
+        box_html = f"<div style='background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 14px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
+        
         colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
 st.divider()
