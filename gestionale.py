@@ -149,12 +149,11 @@ st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
 
-# --- 🔍 NUOVO MOTORE DI RICERCA ---
+# --- 🔍 MOTORE DI RICERCA ---
 with st.expander("🔍 Cerca Cliente / Verifica Prenotazione", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Mario, 340123..., Miramare").strip()
     if ricerca:
         if not df_pren.empty:
-            # Cerca la parola in Nome, Telefono o Hotel, ignorando maiuscole/minuscole
             mask_nome = df_pren['Nome'].astype(str).str.contains(ricerca, case=False, na=False)
             mask_tel = df_pren['Telefono'].astype(str).str.contains(ricerca, case=False, na=False)
             mask_hotel = df_pren['Hotel'].astype(str).str.contains(ricerca, case=False, na=False)
@@ -175,19 +174,45 @@ st.divider()
 # --- BARRA LATERALE: INSERIMENTO E MODIFICA ---
 st.sidebar.header("📝 Gestione Prenotazioni")
 
+# 1. VERIFICA DISPONIBILITÀ (Spostato fuori dal form per renderlo in tempo reale)
+st.sidebar.subheader("1. Scegli Date e Fila")
+date_selezionate = st.sidebar.date_input("Intervallo Date (Arrivo e Partenza)", [], format="DD/MM/YYYY")
+input_fila = st.sidebar.selectbox("Fila", list(CAPIENZA_FILE.keys()))
+max_ombrelloni_riga = CAPIENZA_FILE[input_fila]
+
+# Logica di calcolo degli ombrelloni liberi
+ombrelloni_liberi = []
+if len(date_selezionate) > 0:
+    data_inizio = date_selezionate[0]
+    data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
+    giorni_totali = (data_fine - data_inizio).days + 1
+    
+    # Genera l'elenco di tutti i giorni selezionati
+    date_range = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
+    
+    # Controlla quali ombrelloni sono occupati in QUELLA fila per ALMENO UN GIORNO in quel range
+    df_occupati = df_pren[(df_pren['Data'].isin(date_range)) & (df_pren['Fila'] == input_fila)]
+    ombrelloni_occupati = df_occupati['Ombrellone'].unique()
+    
+    # Crea la lista dei liberi
+    ombrelloni_liberi = [i for i in range(1, max_ombrelloni_riga + 1) if i not in ombrelloni_occupati]
+    
+    if ombrelloni_liberi:
+        st.sidebar.success(f"✅ Liberi in queste date:\n {', '.join(map(str, ombrelloni_liberi))}")
+    else:
+        st.sidebar.error("❌ Tutto esaurito in questa fila per le date scelte!")
+
+# 2. MODULO DI INSERIMENTO DATI
+st.sidebar.subheader("2. Completa Prenotazione")
 with st.sidebar.form("form_prenotazione"):
-    date_selezionate = st.date_input("Intervallo Date (Arrivo e Partenza)", [], format="DD/MM/YYYY")
-    
-    input_fila = st.selectbox("Fila", list(CAPIENZA_FILE.keys()))
-    max_ombrelloni_riga = CAPIENZA_FILE[input_fila]
-    
     col_q, col_omb = st.columns(2)
     with col_q:
         quantita_postazioni = st.number_input("Quante postazioni vicine?", min_value=1, max_value=3, value=1)
     
     max_start = max_ombrelloni_riga - quantita_postazioni + 1
     with col_omb:
-        input_ombrellone = st.number_input(f"N° Ombrellone Iniziale (Max {max_start})", min_value=1, max_value=max_start, step=1)
+        # L'operatore guarda il riquadro verde sopra e scrive qui il numero
+        input_ombrellone = st.number_input(f"N° Ombrellone Iniziale", min_value=1, max_value=max_start, value=1, step=1)
         
     st.markdown("---")
     
