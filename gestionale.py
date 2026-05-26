@@ -345,7 +345,6 @@ st.sidebar.markdown("---")
 # --- 💬 COMUNICAZIONI CLIENTE AVANZATE ---
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
 
-# Selezione operatore e tipo destinatario
 operatore = st.sidebar.selectbox("👤 Operatore", ["Hiba Laawissi", "Eduardo Bustamante", "Alberto Bertolotti"])
 tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal=True)
 
@@ -358,7 +357,6 @@ lingua_scelta = st.sidebar.selectbox("Lingua Messaggio", ["Italiano", "English"]
 if nome_wa and len(date_wa) > 0:
     data_inizio_ita = date_wa[0].strftime("%d/%m/%Y")
     
-    # Gestione date (singola o multipla)
     if len(date_wa) > 1 and date_wa[0] != date_wa[1]:
         data_fine_ita = date_wa[1].strftime("%d/%m/%Y")
         stringa_date_ita = f"dal {data_inizio_ita} al {data_fine_ita}"
@@ -367,21 +365,19 @@ if nome_wa and len(date_wa) > 0:
         stringa_date_ita = f"per il giorno {data_inizio_ita}"
         stringa_date_eng = f"for {data_inizio_ita}"
         
-    # Costruzione messaggi in base a Tipo e Lingua
     if tipo_cliente == "Privato":
         if lingua_scelta == "Italiano":
-            testo_base = f"Gentile {nome_wa}, la sua prenotazione {stringa_date_ita} è stata registrata correttamente. Le ricordiamo di arrivare entro le ore 11:00. In caso di ritardo la preghiamo di avvisare inviando un messaggio WhatsApp al numero +39 3391789319 indicando nome di riferimento e le date della prenotazione, altrimenti la prenotazione decadrà dal sistema e verrà liberata. Grazie! - {operatore}, Araj Beach Club"
+            testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita} è stata registrata correttamente.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisare tempestivamente inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date della prenotazione.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie e a presto!\n\n{operatore}\nAraj Beach Club"
             oggetto_email = "Conferma Prenotazione - Araj Beach Club"
         else:
-            testo_base = f"Dear {nome_wa}, your reservation {stringa_date_eng} has been successfully recorded. We remind you to arrive by 11:00 AM. In case of delay, please notify us by sending a WhatsApp message to +39 3391789319 indicating your reference name and the dates of your reservation; otherwise, the reservation will be cancelled and the spot released. Thank you! - {operatore}, Araj Beach Club"
+            testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng} has been successfully recorded.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us by sending a WhatsApp message to +39 3391789319 indicating your reference name and the dates of your reservation.\n\nOtherwise, the reservation will be automatically cancelled and the spot released.\n\nThank you!\n\n{operatore}\nAraj Beach Club"
             oggetto_email = "Reservation Confirmation - Araj Beach Club"
     else:
-        # Testo più breve per gli Hotel
         if lingua_scelta == "Italiano":
-            testo_base = f"Gentile Staff di {nome_wa}, confermiamo con piacere la prenotazione {stringa_date_ita} per i vostri ospiti. Vi preghiamo di comunicare eventuali ritardi tramite WhatsApp al +39 3391789319 per evitare la cancellazione automatica della postazione alle ore 11:00. Grazie per la collaborazione! - {operatore}, Araj Beach Club"
+            testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo con piacere la prenotazione {stringa_date_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi tramite WhatsApp al numero +39 3391789319 per evitare la cancellazione automatica della postazione alle ore 11:00.\n\nGrazie per la preziosa collaborazione!\n\n{operatore}\nAraj Beach Club"
             oggetto_email = f"Conferma Prenotazione {stringa_date_ita} - Araj Beach Club"
         else:
-            testo_base = f"Dear Staff at {nome_wa}, we are pleased to confirm the reservation {stringa_date_eng} for your guests. Please notify us of any delays via WhatsApp at +39 3391789319 to avoid automatic cancellation of the spot at 11:00 AM. Thank you for your cooperation! - {operatore}, Araj Beach Club"
+            testo_base = f"Dear Staff at {nome_wa},\n\nWe are pleased to confirm the reservation {stringa_date_eng} for your guests.\n\nPlease notify us of any delays via WhatsApp at +39 3391789319 to avoid automatic cancellation of the spot at 11:00 AM.\n\nThank you for your cooperation!\n\n{operatore}\nAraj Beach Club"
             oggetto_email = f"Reservation Confirmation {stringa_date_eng} - Araj Beach Club"
 
     testo_url = urllib.parse.quote(testo_base)
@@ -406,7 +402,7 @@ if nome_wa and len(date_wa) > 0:
 elif nome_wa and len(date_wa) == 0:
     st.sidebar.warning("⚠️ Seleziona le date per generare il messaggio.")
 else:
-    st.sidebar.caption("Inserisci Nome e Date per preparare il messaggio di conferma.")
+    st.sidebar.caption("Inserisci Nome e Date per preparare il messaggio.")
 
 # --- MAPPA VISIVA E TABELLA INFERIORE INTERATTIVA ---
 data_visiva = st.date_input("Seleziona data del planning:", date.today(), format="DD/MM/YYYY")
