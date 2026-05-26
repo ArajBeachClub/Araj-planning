@@ -111,6 +111,15 @@ STATI_MAP = {
     "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
+# --- IMPOSTAZIONI DELLE COLONNE PER I MENU A TENDINA ---
+CONFIGURAZIONE_COLONNE = {
+    "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
+    "Fila": st.column_config.SelectboxColumn("Fila", options=list(CAPIENZA_FILE.keys())),
+    "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
+    "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
+    "Persone": st.column_config.NumberColumn("Persone", min_value=1, step=1)
+}
+
 def trova_stagione(data_sel):
     for stagione, intervalli in STAGIONI_DATE.items():
         for inizio, fine in intervalli:
@@ -180,21 +189,17 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             risultati = df_pren[mask_nome | mask_tel | mask_hotel].sort_values(by="Data")
             
             if not risultati.empty:
-                st.success(f"Trovate {len(risultati)} prenotazioni per '{ricerca}'. Modifica le celle, cancella righe o aggiungine di nuove!")
+                st.success(f"Trovate {len(risultati)} prenotazioni. Fai doppio clic sulle celle per modificarle (Stato, Prezzo, Data, Extra)!")
                 
-                # Mostriamo tutte le colonne necessarie per non perdere dati
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Prezzo_Giorno", "Persone", "Durata", "Extra"]
                 risultati_filtrati = risultati[colonne_ordine]
                 
-                # L'impostazione num_rows="dynamic" permette di aggiungere o togliere righe!
-                edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True)
+                # Aggiunto column_config per i menu a tendina
+                edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
-                if st.button("💾 Salva Modifiche Rapide"):
-                    # Eliminiamo le vecchie righe associate a questa ricerca
+                if st.button("💾 Salva Modifiche da Ricerca"):
                     df_pren = df_pren.drop(risultati.index)
-                    # Aggiungiamo in blocco tutte le righe nuove (o modificate) dall'editor
                     df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
-                    
                     df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
                     st.success("✅ Modifiche salvate con successo nel database!")
                     st.rerun()
@@ -341,7 +346,6 @@ nome_wa = st.sidebar.text_input("Nome Cliente")
 tel_wa = st.sidebar.text_input("Cellulare (Es: 3401234567)")
 
 if nome_wa and tel_wa:
-    # Pulizia numero telefono per il link
     tel_pulito = tel_wa.replace(" ", "").replace("+", "")
     if not tel_pulito.startswith("39") and len(tel_pulito) < 11:
         tel_pulito = "39" + tel_pulito
@@ -356,7 +360,7 @@ if nome_wa and tel_wa:
 else:
     st.sidebar.caption("Inserisci Nome e Cellulare per generare il messaggio WhatsApp gratuito.")
 
-# --- MAPPA VISIVA ---
+# --- MAPPA VISIVA E TABELLA INFERIORE INTERATTIVA ---
 data_visiva = st.date_input("Seleziona data del planning:", date.today(), format="DD/MM/YYYY")
 data_visiva_str = data_visiva.strftime("%Y-%m-%d")
 df_oggi = df_pren[df_pren['Data'] == data_visiva_str]
@@ -404,10 +408,24 @@ for nome_fila, max_posti in CAPIENZA_FILE.items():
         colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
 st.divider()
-st.subheader("📋 Elenco Dettagliato")
+
+# --- ELENCO DETTAGLIATO MODIFICABILE ---
+st.subheader("📋 Elenco Dettagliato (Modificabile)")
 if not df_oggi.empty:
-    colonne_tabella = ["Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Persone", "Durata", "Extra"]
-    if 'Hotel' in df_oggi.columns: colonne_tabella.insert(4, "Hotel")
-    st.dataframe(df_oggi[colonne_tabella], use_container_width=True)
+    st.info("💡 Fai doppio clic sulle celle per cambiare lo Stato (es. in Pagato), aggiornare il Prezzo, le Date o aggiungere Extra, poi clicca su Salva!")
+    colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Persone", "Durata", "Extra"]
+    if 'Hotel' in df_oggi.columns: 
+        colonne_tabella.insert(4, "Hotel")
+    
+    # Aggiunto column_config anche qui sotto
+    edited_oggi = st.data_editor(df_oggi[colonne_tabella], num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
+    
+    if st.button("💾 Salva Modifiche Tabella", type="primary"):
+        # Rimuove le righe vecchie di oggi e aggiunge quelle appena modificate
+        df_pren = df_pren.drop(df_oggi.index)
+        df_pren = pd.concat([df_pren, edited_oggi], ignore_index=True)
+        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+        st.success("✅ Dati della giornata aggiornati!")
+        st.rerun()
 else:
-    st.info("Nessuna prenotazione registrata.")
+    st.info("Nessuna prenotazione registrata per la data di oggi.")
