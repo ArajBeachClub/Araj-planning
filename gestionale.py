@@ -17,6 +17,11 @@ FILE_PRENOTAZIONI = 'prenotazioni.csv'
 FILE_CLIENTI = 'clienti.csv'
 
 # ==========================================
+# 👤 TEAM E OPERATORI
+# ==========================================
+OPERATORI_SPIAGGIA = ["Hiba Laawissi", "Rachele Filippin", "Federica Nebuloni", "Matilde Montis"]
+
+# ==========================================
 # 🤖 CONFIGURAZIONE BOT TELEGRAM (GRATIS)
 # ==========================================
 TELEGRAM_TOKEN = "8804050943:AAHvXVmSnEUPlvV6mj33JGGQHfhosnqcC2U"
@@ -126,21 +131,23 @@ MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "L
 STATI_MAP = {
     "In Attesa (Giallo)": "Attesa",
     "Confermato (Rosso)": "Confermato",
-    "Pagato (Blu)": "Pagato",
     "Presente in Spiaggia (Viola)": "Presente",
+    "Pagato (Blu)": "Pagato",
+    "Presente e Pagato (Verde Acqua)": "Pres_Pagato",
     "Liberato Solo Mattina (Rivendibile)": "Libero_Mat",
     "Liberato Solo Pomeriggio (Rivendibile)": "Libero_Pom",
     "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
 CONFIGURAZIONE_COLONNE = {
-    "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Pagato", "Presente", "Libero_Mat", "Libero_Pom", "Libero"]),
+    "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
     "Fila": st.column_config.SelectboxColumn("Fila", options=list(CAPIENZA_FILE.keys())),
     "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
     "Persone": st.column_config.NumberColumn("Persone", min_value=1, step=1),
     "Note": st.column_config.TextColumn("Note / Memo"),
-    "Operatore": st.column_config.SelectboxColumn("Operatore", options=["Hiba Laawissi", "Rachele", "Francesca", "Matilde Montis"])
+    "Operatore": st.column_config.SelectboxColumn("Operatore", options=OPERATORI_SPIAGGIA),
+    "Incassato_da": st.column_config.SelectboxColumn("Incassato da", options=[""] + OPERATORI_SPIAGGIA)
 }
 
 def trova_stagione(data_sel):
@@ -187,6 +194,7 @@ def carica_prenotazioni():
         if "Nome" not in df.columns: df["Nome"] = "" 
         if "Note" not in df.columns: df["Note"] = ""
         if "Operatore" not in df.columns: df["Operatore"] = ""
+        if "Incassato_da" not in df.columns: df["Incassato_da"] = ""
         
         df["Hotel"] = df["Hotel"].fillna("")
         df["Persone"] = df["Persone"].fillna(2)
@@ -195,8 +203,9 @@ def carica_prenotazioni():
         df["Nome"] = df["Nome"].fillna("")
         df["Note"] = df["Note"].fillna("")
         df["Operatore"] = df["Operatore"].fillna("")
+        df["Incassato_da"] = df["Incassato_da"].fillna("")
         return df
-    return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore"])
+    return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
@@ -223,7 +232,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} prenotazioni. Fai doppio clic sulle celle per modificarle!")
                 
-                colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
+                colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
                 risultati_filtrati = risultati[colonne_ordine]
                 
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
@@ -244,8 +253,7 @@ st.divider()
 # --- BARRA LATERALE ---
 st.sidebar.header("📝 Gestione Prenotazioni")
 
-# SPOSTATO IN CIMA ALLA BARRA LATERALE
-input_operatore = st.sidebar.selectbox("👤 Chi sta registrando la prenotazione?", ["Hiba Laawissi", "Rachele", "Francesca", "Matilde Montis"])
+input_operatore = st.sidebar.selectbox("👤 Chi sta registrando la prenotazione?", OPERATORI_SPIAGGIA)
 
 st.sidebar.subheader("1. Scegli Date e Fila")
 date_selezionate = st.sidebar.date_input("Intervallo Date (Arrivo e Partenza)", [], format="DD/MM/YYYY")
@@ -304,6 +312,7 @@ with st.sidebar.form("form_prenotazione"):
     
     st.markdown("---")
     input_stato = st.selectbox("Stato Postazione", list(STATI_MAP.keys()))
+    input_incassato = st.selectbox("💰 Pagamento incassato da:", [""] + OPERATORI_SPIAGGIA, help="Seleziona chi ha preso i soldi se il cliente ha già pagato")
     
     prezzo_consigliato_totale = 0.0
     if len(date_selezionate) > 0:
@@ -366,7 +375,7 @@ if submit:
                             "Nome": input_nome, "Telefono": input_telefono, "Stato": stato_pulito,
                             "Prezzo_Giorno": prezzo_finale_unitario, "Hotel": str(input_hotel).strip(),
                             "Persone": input_persone, "Durata": input_durata, "Extra": ", ".join(input_extra), 
-                            "Note": input_note, "Operatore": input_operatore
+                            "Note": input_note, "Operatore": input_operatore, "Incassato_da": input_incassato
                         }])
                         df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
@@ -380,7 +389,7 @@ st.sidebar.markdown("---")
 # --- AREA DEMO E NOTIFICHE ---
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
 
-operatore = st.sidebar.selectbox("👤 Inviato da:", ["Hiba Laawissi", "Eduardo Bustamante", "Alberto Bertolotti"])
+operatore_msg = st.sidebar.selectbox("👤 Inviato da:", ["Hiba Laawissi", "Eduardo Bustamante", "Alberto Bertolotti"])
 tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal=True)
 
 date_wa = st.sidebar.date_input("Date prenotazione (Arrivo e Partenza)", [], format="DD/MM/YYYY")
@@ -401,17 +410,17 @@ if nome_wa and len(date_wa) > 0:
         
     if tipo_cliente == "Privato":
         if lingua_scelta == "Italiano":
-            testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita} è stata registrata correttamente.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisare tempestivamente inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date della prenotazione.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie e a presto!\n\n{operatore}\nAraj Beach Club"
+            testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita} è stata registrata correttamente.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisare tempestivamente inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date della prenotazione.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie e a presto!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto_email = "Conferma Prenotazione - Araj Beach Club"
         else:
-            testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng} has been successfully recorded.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us by sending a WhatsApp message to +39 3391789319 indicating your reference name and the dates of your reservation.\n\nOtherwise, the reservation will be automatically cancelled and the spot released.\n\nThank you!\n\n{operatore}\nAraj Beach Club"
+            testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng} has been successfully recorded.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us by sending a WhatsApp message to +39 3391789319 indicating your reference name and the dates of your reservation.\n\nOtherwise, the reservation will be automatically cancelled and the spot released.\n\nThank you!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto_email = "Reservation Confirmation - Araj Beach Club"
     else:
         if lingua_scelta == "Italiano":
-            testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo con piacere la prenotazione {stringa_date_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi tramite WhatsApp al numero +39 3391789319 per evitare la cancellazione automatica della postazione alle ore 11:00.\n\nGrazie per la preziosa collaborazione!\n\n{operatore}\nAraj Beach Club"
+            testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo con piacere la prenotazione {stringa_date_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi tramite WhatsApp al numero +39 3391789319 per evitare la cancellazione automatica della postazione alle ore 11:00.\n\nGrazie per la preziosa collaborazione!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto_email = f"Conferma Prenotazione {stringa_date_ita} - Araj Beach Club"
         else:
-            testo_base = f"Dear Staff at {nome_wa},\n\nWe are pleased to confirm the reservation {stringa_date_eng} for your guests.\n\nPlease notify us of any delays via WhatsApp at +39 3391789319 to avoid automatic cancellation of the spot at 11:00 AM.\n\nThank you for your cooperation!\n\n{operatore}\nAraj Beach Club"
+            testo_base = f"Dear Staff at {nome_wa},\n\nWe are pleased to confirm the reservation {stringa_date_eng} for your guests.\n\nPlease notify us of any delays via WhatsApp at +39 3391789319 to avoid automatic cancellation of the spot at 11:00 AM.\n\nThank you for your cooperation!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto_email = f"Reservation Confirmation {stringa_date_eng} - Araj Beach Club"
 
     testo_url = urllib.parse.quote(testo_base)
@@ -466,19 +475,26 @@ else:
             
             operatore_val = str(record.iloc[0].get('Operatore', ""))
             nome_op = operatore_val.split()[0] if operatore_val and operatore_val != "nan" else ""
-            badge_operatore = f" | ✍️ {nome_op}" if nome_op else ""
+            badge_operatore = f" ✍️ {nome_op}" if nome_op else ""
+            
+            incassato_val = str(record.iloc[0].get('Incassato_da', ""))
+            nome_incass = incassato_val.split()[0] if incassato_val and incassato_val != "nan" else ""
+            badge_incassato = f" 💰 {nome_incass} |" if nome_incass else ""
             
             badge_durata = "🌗" if "Mezza" in str(durata) else ""
             badge_extra = "➕" if extra else ""
             hotel_c = record.iloc[0].get('Hotel', "")
             hotel_html = f"<span style='font-size: 11px; color: #ffe8a1; display: block;'>🏨 {hotel_c}</span>" if hotel_c and not pd.isna(hotel_c) else ""
-            dettagli = f"€{prezzo_g:.0f} | 👤 {pers}{badge_operatore} {badge_durata}{badge_extra}"
+            
+            # Formattazione per la casellina
+            dettagli = f"€{prezzo_g:.0f}{badge_incassato} 👤 {pers}{badge_operatore} {badge_durata}{badge_extra}"
             badge_rivendibile, colore_box = "", "#28a745"
             
             if stato == "Attesa": colore_box = "#ffc107"
             elif stato == "Confermato": colore_box = "#dc3545"
             elif stato == "Pagato": colore_box = "#007bff"
             elif stato == "Presente": colore_box = "#6f42c1"
+            elif stato == "Pres_Pagato": colore_box = "#20c997" # Verde Acqua / Teal
             elif stato == "Libero_Mat":
                 colore_box = "#17a2b8"
                 badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌅 LIBERO MATTINA</span><br>"
@@ -528,9 +544,9 @@ else:
         if giorni_totali_vis > 1:
             st.warning("⚠️ Stai visualizzando e modificando i dati di PIÙ GIORNI contemporaneamente.")
         else:
-            st.info("💡 Fai doppio clic sulle celle per cambiare lo Stato (es. in Presente), aggiornare l'Operatore o le Note, poi clicca su Salva!")
+            st.info("💡 Fai doppio clic sulle celle per cambiare lo Stato (es. in Presente e Pagato), aggiornare l'Operatore, chi ha Incassato o le Note, poi clicca su Salva!")
         
-        colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
+        colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
         if 'Hotel' in df_range.columns: 
             colonne_tabella.insert(4, "Hotel")
         
