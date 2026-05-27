@@ -126,7 +126,7 @@ MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "L
 STATI_MAP = {
     "In Attesa (Giallo)": "Attesa",
     "Confermato (Rosso)": "Confermato",
-    "Presente e Pagato (Blu)": "Presente e Pagato",
+    "Pagato (Blu)": "Pagato",
     "Presente in Spiaggia (Viola)": "Presente",
     "Liberato Solo Mattina (Rivendibile)": "Libero_Mat",
     "Liberato Solo Pomeriggio (Rivendibile)": "Libero_Pom",
