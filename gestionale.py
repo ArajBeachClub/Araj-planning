@@ -36,7 +36,6 @@ def invia_notifica_telegram(messaggio):
 # ==========================================
 
 def normalizza_tel(t):
-    """Pulisce il numero rimuovendo spazi, + e il prefisso 39 per evitare sdoppiamenti"""
     if not t or pd.isna(t): return ""
     t = str(t).strip().replace(" ", "").replace("+", "")
     if t.startswith("39") and len(t) > 9:
@@ -128,18 +127,20 @@ STATI_MAP = {
     "In Attesa (Giallo)": "Attesa",
     "Confermato (Rosso)": "Confermato",
     "Pagato (Blu)": "Pagato",
+    "Presente in Spiaggia (Viola)": "Presente",
     "Liberato Solo Mattina (Rivendibile)": "Libero_Mat",
     "Liberato Solo Pomeriggio (Rivendibile)": "Libero_Pom",
     "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
 CONFIGURAZIONE_COLONNE = {
-    "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
+    "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Pagato", "Presente", "Libero_Mat", "Libero_Pom", "Libero"]),
     "Fila": st.column_config.SelectboxColumn("Fila", options=list(CAPIENZA_FILE.keys())),
     "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
     "Persone": st.column_config.NumberColumn("Persone", min_value=1, step=1),
-    "Note": st.column_config.TextColumn("Note / Memo")
+    "Note": st.column_config.TextColumn("Note / Memo"),
+    "Operatore": st.column_config.SelectboxColumn("Operatore", options=["Hiba Laawissi", "Rachele", "Francesca", "Matilde Montis"])
 }
 
 def trova_stagione(data_sel):
@@ -147,7 +148,6 @@ def trova_stagione(data_sel):
         for inizio, fine in intervalli:
             if inizio <= data_sel <= fine:
                 return stagione
-    # Se cade fuori dai range definiti, applichiamo di default la tariffa "Media"
     return "Media"
 
 def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
@@ -186,6 +186,7 @@ def carica_prenotazioni():
         if "Extra" not in df.columns: df["Extra"] = ""
         if "Nome" not in df.columns: df["Nome"] = "" 
         if "Note" not in df.columns: df["Note"] = ""
+        if "Operatore" not in df.columns: df["Operatore"] = ""
         
         df["Hotel"] = df["Hotel"].fillna("")
         df["Persone"] = df["Persone"].fillna(2)
@@ -193,8 +194,9 @@ def carica_prenotazioni():
         df["Extra"] = df["Extra"].fillna("")
         df["Nome"] = df["Nome"].fillna("")
         df["Note"] = df["Note"].fillna("")
+        df["Operatore"] = df["Operatore"].fillna("")
         return df
-    return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Hotel", "Persone", "Durata", "Extra", "Note"])
+    return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore"])
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
@@ -221,7 +223,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} prenotazioni. Fai doppio clic sulle celle per modificarle!")
                 
-                colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
+                colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
                 risultati_filtrati = risultati[colonne_ordine]
                 
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
@@ -272,6 +274,9 @@ with st.sidebar.form("form_prenotazione"):
         input_ombrellone = st.number_input(f"N° Ombrellone Iniziale", min_value=1, max_value=max_start, value=1, step=1)
         
     st.markdown("---")
+    
+    input_operatore = st.selectbox("Registrato da (Operatore):", ["Hiba Laawissi", "Rachele", "Francesca", "Matilde Montis"])
+    
     input_telefono = st.text_input("Telefono Cliente (Opzionale)").strip()
     nome_automatico = ""
     
@@ -359,7 +364,8 @@ if submit:
                             "Data": giorno_corrente_str, "Fila": input_fila, "Ombrellone": omb_corrente,
                             "Nome": input_nome, "Telefono": input_telefono, "Stato": stato_pulito,
                             "Prezzo_Giorno": prezzo_finale_unitario, "Hotel": str(input_hotel).strip(),
-                            "Persone": input_persone, "Durata": input_durata, "Extra": ", ".join(input_extra), "Note": input_note
+                            "Persone": input_persone, "Durata": input_durata, "Extra": ", ".join(input_extra), 
+                            "Note": input_note, "Operatore": input_operatore
                         }])
                         df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
@@ -370,22 +376,10 @@ if submit:
 
 st.sidebar.markdown("---")
 
-# --- AREA DEMO (GRATIS) ---
-st.sidebar.subheader("🤖 Simulazione Assistente AI")
-st.sidebar.info("Clicca qui domani per far vedere la notifica in tempo reale su Telegram!")
-if st.sidebar.button("📞 Simula Chiamata AI (Invia a Telegram)", type="primary"):
-    testo_demo = "🚨 NUOVA PRENOTAZIONE DA AI 🚨\n\n👤 Nome: Alessandro Bianchi\n📱 Telefono: 340 123 4567\n📅 Date: 08 Agosto 2026\n🏖 Fila richiesta: Prima Fila\n👥 Persone: 2\n\n👉 Controlla il gestionale e registrala!"
-    if invia_notifica_telegram(testo_demo):
-        st.sidebar.success("Notifica inviata! Guarda il telefono.")
-    else:
-        st.sidebar.error("Errore nell'invio.")
-
-st.sidebar.markdown("---")
-
-# --- 💬 COMUNICAZIONI CLIENTE AVANZATE ---
+# --- AREA DEMO E NOTIFICHE ---
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
 
-operatore = st.sidebar.selectbox("👤 Operatore", ["Hiba Laawissi", "Eduardo Bustamante", "Alberto Bertolotti"])
+operatore = st.sidebar.selectbox("👤 Inviato da:", ["Hiba Laawissi", "Eduardo Bustamante", "Alberto Bertolotti"])
 tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal=True)
 
 date_wa = st.sidebar.date_input("Date prenotazione (Arrivo e Partenza)", [], format="DD/MM/YYYY")
@@ -396,7 +390,6 @@ lingua_scelta = st.sidebar.selectbox("Lingua Messaggio", ["Italiano", "English"]
 
 if nome_wa and len(date_wa) > 0:
     data_inizio_ita = date_wa[0].strftime("%d/%m/%Y")
-    
     if len(date_wa) > 1 and date_wa[0] != date_wa[1]:
         data_fine_ita = date_wa[1].strftime("%d/%m/%Y")
         stringa_date_ita = f"dal {data_inizio_ita} al {data_fine_ita}"
@@ -425,7 +418,6 @@ if nome_wa and len(date_wa) > 0:
     destinatario_email = email_cliente if email_cliente else ""
 
     col1, col2 = st.sidebar.columns(2)
-    
     with col1:
         if tel_wa:
             tel_pulito = tel_wa.replace(" ", "").replace("+", "")
@@ -435,79 +427,119 @@ if nome_wa and len(date_wa) > 0:
             st.link_button("💬 WhatsApp", url_whatsapp, use_container_width=True)
         else:
             st.caption("Manca il numero")
-            
     with col2:
         url_email = f"mailto:{destinatario_email}?subject={oggetto_url}&body={testo_url}"
         st.link_button("📧 Email", url_email, use_container_width=True)
 elif nome_wa and len(date_wa) == 0:
     st.sidebar.warning("⚠️ Seleziona le date per generare il messaggio.")
-else:
-    st.sidebar.caption("Inserisci Nome e Date per preparare il messaggio.")
 
 # --- MAPPA VISIVA E TABELLA INFERIORE INTERATTIVA ---
-data_visiva = st.date_input("Seleziona data del planning:", date.today(), format="DD/MM/YYYY")
-data_visiva_str = data_visiva.strftime("%Y-%m-%d")
-df_oggi = df_pren[df_pren['Data'] == data_visiva_str]
-data_formattata_ita = f"{data_visiva.day} {MESI_ITA[data_visiva.month]} {data_visiva.year}"
-st.header(f"📅 Planning del {data_formattata_ita}")
-st.divider()
+data_visiva = st.date_input("📅 Mappa Visiva: Seleziona SINGOLA DATA (per i clienti) o UN PERIODO (per cercare disponibilità fisse):", [], format="DD/MM/YYYY")
 
-def controlla_posto(numero_ombrellone, fila):
-    if df_oggi.empty: return "#28a745", "Libero", "", "", ""
-    record = df_oggi[(df_oggi['Ombrellone'] == numero_ombrellone) & (df_oggi['Fila'] == fila)]
-    if record.empty: return "#28a745", "Libero", "", "", ""
-    
-    stato = record.iloc[0]['Stato']
-    prezzo_g = record.iloc[0]['Prezzo_Giorno']
-    pers = record.iloc[0].get('Persone', 2)
-    durata = record.iloc[0].get('Durata', "")
-    extra = record.iloc[0].get('Extra', "")
-    nome_c = record.iloc[0].get('Nome', "")
-    
-    badge_durata = "🌗" if "Mezza" in str(durata) else ""
-    badge_extra = "➕" if extra else ""
-    hotel_c = record.iloc[0].get('Hotel', "")
-    hotel_html = f"<span style='font-size: 11px; color: #ffe8a1; display: block;'>🏨 {hotel_c}</span>" if hotel_c and not pd.isna(hotel_c) else ""
-    dettagli = f"€{prezzo_g:.0f} | 👤 {pers} {badge_durata}{badge_extra}"
-    badge_rivendibile, colore_box = "", "#28a745"
-    
-    if stato == "Attesa": colore_box = "#ffc107"
-    elif stato == "Confermato": colore_box = "#dc3545"
-    elif stato == "Pagato": colore_box = "#007bff"
-    elif stato == "Libero_Mat":
-        colore_box = "#17a2b8"
-        badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌅 LIBERO MATTINA</span><br>"
-    elif stato == "Libero_Pom":
-        colore_box = "#17a2b8"
-        badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌇 LIBERO POMERIGG.</span><br>"
-    return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile
-
-for nome_fila, max_posti in CAPIENZA_FILE.items():
-    st.subheader(nome_fila)
-    colonne_griglia = st.columns(max_posti) 
-    for i in range(max_posti):
-        numero_omb = i + 1
-        colore_box, titolo, sottotitolo, hotel_str, badge_rivend = controlla_posto(numero_omb, nome_fila)
-        box_html = f"<div style='background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 14px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
-        colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
-
-st.divider()
-
-# --- ELENCO DETTAGLIATO MODIFICABILE ---
-st.subheader("📋 Elenco Dettagliato (Modificabile)")
-if not df_oggi.empty:
-    st.info("💡 Fai doppio clic sulle celle per cambiare lo Stato (es. in Pagato), aggiornare il Prezzo, le Date o aggiungere Extra, poi clicca su Salva!")
-    colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
-    if 'Hotel' in df_oggi.columns: 
-        colonne_tabella.insert(4, "Hotel")
-    
-    edited_oggi = st.data_editor(df_oggi[colonne_tabella], num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
-    
-    if st.button("💾 Salva Modifiche Tabella", type="primary"):
-        df_pren = df_pren.drop(df_oggi.index)
-        df_pren = pd.concat([df_pren, edited_oggi], ignore_index=True)
-        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-        st.success("✅ Dati della giornata aggiornati!")
-        st.rerun()
+if len(data_visiva) == 0:
+    st.info("👈 Seleziona una data per visualizzare la mappa della spiaggia.")
 else:
-    st.info("Nessuna prenotazione registrata per la data di oggi.")
+    data_inizio_vis = data_visiva[0]
+    data_fine_vis = data_visiva[1] if len(data_visiva) > 1 else data_inizio_vis
+    giorni_totali_vis = (data_fine_vis - data_inizio_vis).days + 1
+    date_range_vis = [(data_inizio_vis + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali_vis)]
+
+    df_range = df_pren[df_pren['Data'].isin(date_range_vis)]
+
+    if giorni_totali_vis == 1:
+        # VISTA SINGOLA DATA
+        data_formattata_ita = f"{data_inizio_vis.day} {MESI_ITA[data_inizio_vis.month]} {data_inizio_vis.year}"
+        st.header(f"📅 Planning del {data_formattata_ita}")
+        st.divider()
+
+        def controlla_posto(numero_ombrellone, fila):
+            record = df_range[(df_range['Ombrellone'] == numero_ombrellone) & (df_range['Fila'] == fila)]
+            if record.empty: return "#28a745", "Libero", "", "", ""
+            
+            stato = record.iloc[0]['Stato']
+            prezzo_g = record.iloc[0]['Prezzo_Giorno']
+            pers = record.iloc[0].get('Persone', 2)
+            durata = record.iloc[0].get('Durata', "")
+            extra = record.iloc[0].get('Extra', "")
+            nome_c = record.iloc[0].get('Nome', "")
+            
+            operatore_val = str(record.iloc[0].get('Operatore', ""))
+            nome_op = operatore_val.split()[0] if operatore_val and operatore_val != "nan" else ""
+            badge_operatore = f" | ✍️ {nome_op}" if nome_op else ""
+            
+            badge_durata = "🌗" if "Mezza" in str(durata) else ""
+            badge_extra = "➕" if extra else ""
+            hotel_c = record.iloc[0].get('Hotel', "")
+            hotel_html = f"<span style='font-size: 11px; color: #ffe8a1; display: block;'>🏨 {hotel_c}</span>" if hotel_c and not pd.isna(hotel_c) else ""
+            dettagli = f"€{prezzo_g:.0f} | 👤 {pers}{badge_operatore} {badge_durata}{badge_extra}"
+            badge_rivendibile, colore_box = "", "#28a745"
+            
+            if stato == "Attesa": colore_box = "#ffc107"
+            elif stato == "Confermato": colore_box = "#dc3545"
+            elif stato == "Pagato": colore_box = "#007bff"
+            elif stato == "Presente": colore_box = "#6f42c1"
+            elif stato == "Libero_Mat":
+                colore_box = "#17a2b8"
+                badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌅 LIBERO MATTINA</span><br>"
+            elif stato == "Libero_Pom":
+                colore_box = "#17a2b8"
+                badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌇 LIBERO POMERIGG.</span><br>"
+            return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile
+
+        for nome_fila, max_posti in CAPIENZA_FILE.items():
+            st.subheader(nome_fila)
+            colonne_griglia = st.columns(max_posti) 
+            for i in range(max_posti):
+                numero_omb = i + 1
+                colore_box, titolo, sottotitolo, hotel_str, badge_rivend = controlla_posto(numero_omb, nome_fila)
+                box_html = f"<div style='background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 14px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
+                colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
+
+    else:
+        # VISTA PERIODO CONTINUO (RADAR DISPONIBILITÀ)
+        data_in_ita = data_inizio_vis.strftime("%d/%m")
+        data_fin_ita = data_fine_vis.strftime("%d/%m")
+        st.header(f"🗓️ Radar Disponibilità Continua ({data_in_ita} - {data_fin_ita})")
+        st.info(f"💡 Visualizzazione per un periodo di **{giorni_totali_vis} giorni**. I posti **VERDI** sono liberi per tutto l'arco di tempo. I posti **ROSSI** sono occupati per almeno un giorno in questo periodo.")
+        st.divider()
+
+        def controlla_posto_periodo(numero_ombrellone, fila):
+            record = df_range[(df_range['Ombrellone'] == numero_ombrellone) & (df_range['Fila'] == fila)]
+            if record.empty:
+                return "#28a745", "LIBERO SEMPRE", "✅ Prenotabile fisso", ""
+            else:
+                giorni_occupati = len(record['Data'].unique())
+                return "#dc3545", "NON DISPONIBILE", f"Occupato {giorni_occupati}/{giorni_totali_vis} gg", ""
+
+        for nome_fila, max_posti in CAPIENZA_FILE.items():
+            st.subheader(nome_fila)
+            colonne_griglia = st.columns(max_posti) 
+            for i in range(max_posti):
+                numero_omb = i + 1
+                colore_box, titolo, sottotitolo, badge_rivend = controlla_posto_periodo(numero_omb, nome_fila)
+                box_html = f"<div style='background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 14px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'><span style='font-size: 11px; font-weight: bold; display: block;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span></div>"
+                colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
+
+    # TABELLA MODIFICABILE 
+    st.divider()
+    st.subheader("📋 Elenco Dettagliato (Modificabile)")
+    if not df_range.empty:
+        if giorni_totali_vis > 1:
+            st.warning("⚠️ Stai visualizzando e modificando i dati di PIÙ GIORNI contemporaneamente.")
+        else:
+            st.info("💡 Fai doppio clic sulle celle per cambiare lo Stato (es. in Presente), aggiornare l'Operatore o le Note, poi clicca su Salva!")
+        
+        colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
+        if 'Hotel' in df_range.columns: 
+            colonne_tabella.insert(4, "Hotel")
+        
+        edited_range = st.data_editor(df_range[colonne_tabella], num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
+        
+        if st.button("💾 Salva Modifiche Tabella", type="primary"):
+            df_pren = df_pren.drop(df_range.index)
+            df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
+            df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+            st.success("✅ Dati aggiornati!")
+            st.rerun()
+    else:
+        st.info("Nessuna prenotazione registrata in questo periodo.")
