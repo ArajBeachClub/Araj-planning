@@ -19,7 +19,7 @@ FILE_CLIENTI = 'clienti.csv'
 # ==========================================
 # 👤 TEAM E OPERATORI
 # ==========================================
-OPERATORI_SPIAGGIA = ["Hiba Laawissi", "Rachele Filippin", "Francesca", "Matilde Montis", "Eduardo Bustamante", "Alberto Bertolotti"]
+OPERATORI_SPIAGGIA = ["Hiba Laawissi", "Rachele Filippin", "Francesca Nebuloni", "Matilde Montis", "Eduardo Bustamante", "Alberto Bertolotti"]
 OPZIONI_INCASSO = ["Da saldare"] + OPERATORI_SPIAGGIA
 
 # ==========================================
