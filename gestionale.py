@@ -19,7 +19,7 @@ FILE_CLIENTI = 'clienti.csv'
 # ==========================================
 # 👤 TEAM E OPERATORI
 # ==========================================
-OPERATORI_SPIAGGIA = ["Hiba Laawissi", "Rachele Filippin", "Federica Nebuloni", "Matilde Montis", "Eduardo Bustamante", "Alberto Bertolotti"]
+OPERATORI_SPIAGGIA = ["Hiba Laawissi", "Rachele Filippin", "Francesca", "Matilde Montis", "Eduardo Bustamante", "Alberto Bertolotti"]
 OPZIONI_INCASSO = ["Da saldare"] + OPERATORI_SPIAGGIA
 
 # ==========================================
@@ -53,7 +53,7 @@ def normalizza_tel(t):
 # ==========================================
 
 CAPIENZA_FILE = {
-    "Prima Fila": 14,
+    "Prima Fila": 15,
     "Seconda Fila": 14,
     "Terza Fila": 9,
     "Quarta Fila": 8,
@@ -322,7 +322,9 @@ with st.sidebar.form("form_prenotazione"):
         
     input_prezzo = st.number_input("Prezzo Giornaliero TOTALE (€)", min_value=0.0, value=float(prezzo_consigliato_totale), step=1.0)
     st.markdown("---")
-    forza_sovrascrittura = st.checkbox("⚠️ Consenti Sovrascrittura (Spunta per aggiornare o rimpiazzare)")
+    
+    tipo_salvataggio = st.radio("Se la postazione risulta già occupata:", ["Blocca (Errore)", "Sostituisci (Cancella il vecchio)", "Subentro (Tieni il vecchio per l'incasso)"], help="Scegli Subentro per far pagare due clienti sullo stesso ombrellone nello stesso giorno")
+    
     submit = st.form_submit_button("Applica Modifiche")
 
 if submit:
@@ -336,7 +338,7 @@ if submit:
         sovrapposizioni = df_pren[(df_pren['Data'].isin(date_list_str)) & (df_pren['Fila'] == input_fila) & (df_pren['Ombrellone'].isin(ombrelloni_richiesti))]
         stato_pulito = STATI_MAP[input_stato]
         
-        if not sovrapposizioni.empty and not forza_sovrascrittura and stato_pulito != "Libero":
+        if not sovrapposizioni.empty and tipo_salvataggio == "Blocca (Errore)" and stato_pulito != "Libero":
             st.sidebar.error("🚨 ERRORE: POSTAZIONE GIÀ OCCUPATA!")
             for _, row_conf in sovrapposizioni.drop_duplicates(subset=['Ombrellone', 'Nome']).iterrows():
                 d = row_conf['Data']
@@ -368,7 +370,9 @@ if submit:
                 
                 for j in range(quantita_postazioni):
                     omb_corrente = input_ombrellone + j
-                    df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == omb_corrente) & (df_pren['Fila'] == input_fila))]
+                    
+                    if tipo_salvataggio == "Sostituisci (Cancella il vecchio)":
+                        df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == omb_corrente) & (df_pren['Fila'] == input_fila))]
                     
                     if stato_pulito != "Libero":
                         nuova_p = pd.DataFrame([{
@@ -413,7 +417,7 @@ st.sidebar.markdown("---")
 # --- AREA DEMO E NOTIFICHE ---
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
 
-operatore_msg = st.sidebar.selectbox("👤 Inviato da:", ["Hiba Laawissi", "Eduardo Bustamante", "Alberto Bertolotti"])
+operatore_msg = st.sidebar.selectbox("👤 Inviato da:", OPERATORI_SPIAGGIA)
 tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal=True)
 
 date_wa = st.sidebar.date_input("Date prenotazione (Arrivo e Partenza)", [], format="DD/MM/YYYY")
@@ -490,24 +494,27 @@ else:
             record = df_range[(df_range['Ombrellone'] == numero_ombrellone) & (df_range['Fila'] == fila)]
             if record.empty: return "#28a745", "Libero", "", "", ""
             
-            stato = record.iloc[0]['Stato']
-            prezzo_g = record.iloc[0]['Prezzo_Giorno']
-            pers = record.iloc[0].get('Persone', 2)
-            durata = record.iloc[0].get('Durata', "")
-            extra = record.iloc[0].get('Extra', "")
-            nome_c = record.iloc[0].get('Nome', "")
+            # Se ci sono più clienti (es. Subentro), facciamo vedere l'ultimo arrivato sulla mappa
+            ultimo_record = record.iloc[-1]
             
-            operatore_val = str(record.iloc[0].get('Operatore', ""))
+            stato = ultimo_record['Stato']
+            prezzo_g = ultimo_record['Prezzo_Giorno']
+            pers = ultimo_record.get('Persone', 2)
+            durata = ultimo_record.get('Durata', "")
+            extra = ultimo_record.get('Extra', "")
+            nome_c = ultimo_record.get('Nome', "")
+            
+            operatore_val = str(ultimo_record.get('Operatore', ""))
             nome_op = operatore_val.split()[0] if operatore_val and operatore_val != "nan" else ""
             badge_operatore = f" ✍️ {nome_op}" if nome_op else ""
             
-            incassato_val = str(record.iloc[0].get('Incassato_da', ""))
+            incassato_val = str(ultimo_record.get('Incassato_da', ""))
             nome_incass = incassato_val.split()[0] if incassato_val and incassato_val not in ["nan", "Da", "Da saldare"] else ""
             badge_incassato = f" 💰 {nome_incass} |" if nome_incass else ""
             
             badge_durata = "🌗" if "Mezza" in str(durata) else ""
             badge_extra = "➕" if extra else ""
-            hotel_c = record.iloc[0].get('Hotel', "")
+            hotel_c = ultimo_record.get('Hotel', "")
             hotel_html = f"<span style='font-size: 11px; color: #ffe8a1; display: block;'>🏨 {hotel_c}</span>" if hotel_c and not pd.isna(hotel_c) else ""
             
             # Formattazione per la casellina
@@ -568,7 +575,7 @@ else:
         if giorni_totali_vis > 1:
             st.warning("⚠️ Stai visualizzando e modificando i dati di PIÙ GIORNI contemporaneamente.")
         else:
-            st.info("💡 Fai doppio clic sulle celle per cambiare lo Stato (es. in Presente e Pagato), aggiornare l'Operatore, chi ha Incassato o le Note, poi clicca su Salva!")
+            st.info("💡 Fai doppio clic sulle celle per cambiare lo Stato, aggiornare l'Operatore, chi ha Incassato o le Note, poi clicca su Salva!")
         
         colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
         if 'Hotel' in df_range.columns: 
@@ -584,3 +591,30 @@ else:
             st.rerun()
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
+
+    # --- 📊 REPORT DI FINE GIORNATA ---
+    st.divider()
+    st.header("📊 Report di Fine Giornata")
+    st.info("Questo è il resoconto completo. I clienti in 'Subentro' si sommano automaticamente per calcolare l'incasso reale. Puoi stampare questa pagina premendo Ctrl+P (o Cmd+P su Mac).")
+
+    if not df_range.empty:
+        incasso_totale = df_range['Prezzo_Giorno'].sum()
+        totale_persone = df_range['Persone'].sum()
+        
+        col_r1, col_r2 = st.columns(2)
+        col_r1.metric("💶 Incasso Totale Previsto", f"€ {incasso_totale:.2f}")
+        col_r2.metric("👥 Totale Persone Registrate", f"{totale_persone}")
+        
+        colonne_report = ["Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Incassato_da", "Operatore", "Note"]
+        st.dataframe(df_range[colonne_report].sort_values(by=["Fila", "Ombrellone"]), use_container_width=True)
+        
+        csv_report = df_range.to_csv(index=False).encode('utf-8')
+        st.download_button(
+            label="⬇️ Scarica Report in Excel/CSV",
+            data=csv_report,
+            file_name=f"Report_Spiaggia_{data_inizio_vis}.csv",
+            mime="text/csv",
+            type="primary"
+        )
+    else:
+        st.warning("Nessuna prenotazione da calcolare per questo report.")
