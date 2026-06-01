@@ -288,10 +288,20 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
                 if st.button("💾 Salva Modifiche da Ricerca"):
+                    # AUTOMAZIONE: Se selezionano l'incasso, auto-aggiorna lo Stato
+                    for idx in edited_df.index:
+                        inc = str(edited_df.loc[idx, 'Incassato_da'])
+                        sto = str(edited_df.loc[idx, 'Stato'])
+                        if inc not in ["", "nan", "Da saldare"]:
+                            if sto == "Presente":
+                                edited_df.loc[idx, 'Stato'] = "Pres_Pagato"
+                            elif sto in ["Attesa", "Confermato"]:
+                                edited_df.loc[idx, 'Stato'] = "Pagato"
+
                     df_pren = df_pren.drop(risultati.index)
                     df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
                     df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                    st.success("✅ Modifiche salvate con successo nel database!")
+                    st.success("✅ Modifiche salvate con successo nel database (Stato aggiornato in automatico)!")
                     st.rerun()
             else:
                 st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
@@ -626,10 +636,20 @@ else:
         edited_range = st.data_editor(df_range[colonne_tabella], num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
         if st.button("💾 Salva Modifiche Tabella", type="primary"):
+            # AUTOMAZIONE: Se selezionano l'incasso, auto-aggiorna lo Stato
+            for idx in edited_range.index:
+                inc = str(edited_range.loc[idx, 'Incassato_da'])
+                sto = str(edited_range.loc[idx, 'Stato'])
+                if inc not in ["", "nan", "Da saldare"]:
+                    if sto == "Presente":
+                        edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
+                    elif sto in ["Attesa", "Confermato"]:
+                        edited_range.loc[idx, 'Stato'] = "Pagato"
+
             df_pren = df_pren.drop(df_range.index)
             df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-            st.success("✅ Dati aggiornati!")
+            st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico)!")
             st.rerun()
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
