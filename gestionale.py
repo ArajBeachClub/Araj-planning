@@ -162,9 +162,16 @@ def trova_stagione(data_sel):
 def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     stagione = trova_stagione(data_sel)
     giorno_sett = data_sel.weekday()
+    
     is_weekend = (giorno_sett >= 5) 
     is_festivo = (data_sel in GIORNI_FESTIVI)
-    tipo_tariffa = "Festivo" if (is_weekend or is_festivo) else "Feriale"
+    
+    # 🔴 NUOVA REGOLA: Riconosce il giorno PRIMA di una festa (Prefestivo)
+    giorno_successivo = data_sel + timedelta(days=1)
+    is_prefestivo = (giorno_successivo in GIORNI_FESTIVI)
+    
+    # Adesso scatta la tariffa alta se è Weekend, Festivo, o PREFESTIVO!
+    tipo_tariffa = "Festivo" if (is_weekend or is_festivo or is_prefestivo) else "Feriale"
     
     prezzo_base = TARIFFE[stagione][fila][tipo_tariffa][0]
     suppl_persona = TARIFFE[stagione][fila][tipo_tariffa][1]
@@ -288,7 +295,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
                 if st.button("💾 Salva Modifiche da Ricerca"):
-                    # AUTOMAZIONE: Se selezionano l'incasso, auto-aggiorna lo Stato
                     for idx in edited_df.index:
                         inc = str(edited_df.loc[idx, 'Incassato_da'])
                         sto = str(edited_df.loc[idx, 'Stato'])
