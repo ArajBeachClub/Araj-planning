@@ -59,7 +59,7 @@ CAPIENZA_FILE = {
     "Quarta Fila": 8,
     "Quinta Fila": 8,
     "Sesta Fila (Altre)": 8,
-    "Spiaggia Libera / Esterna": 20
+    "Spiaggia Libera / Esterna": 5
 }
 
 STAGIONI_DATE = {
@@ -340,7 +340,6 @@ with st.sidebar.form("form_prenotazione"):
     
     input_telefono = st.text_input("Telefono Cliente (Opzionale)").strip()
     
-    # 🔴 RIMOSSO IL BUG DELL'AUTOCOMPILAZIONE CHE CANCELLAVA IL NOME
     input_nome = st.text_input("Nome Cliente (Obbligatorio)").strip()
     input_hotel = st.text_input("Nome Hotel (Opzionale)").strip()
     
