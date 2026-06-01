@@ -166,11 +166,9 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     is_weekend = (giorno_sett >= 5) 
     is_festivo = (data_sel in GIORNI_FESTIVI)
     
-    # 🔴 NUOVA REGOLA: Riconosce il giorno PRIMA di una festa (Prefestivo)
     giorno_successivo = data_sel + timedelta(days=1)
     is_prefestivo = (giorno_successivo in GIORNI_FESTIVI)
     
-    # Adesso scatta la tariffa alta se è Weekend, Festivo, o PREFESTIVO!
     tipo_tariffa = "Festivo" if (is_weekend or is_festivo or is_prefestivo) else "Feriale"
     
     prezzo_base = TARIFFE[stagione][fila][tipo_tariffa][0]
@@ -299,15 +297,13 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                         inc = str(edited_df.loc[idx, 'Incassato_da'])
                         sto = str(edited_df.loc[idx, 'Stato'])
                         if inc not in ["", "nan", "Da saldare"]:
-                            if sto == "Presente":
+                            if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
                                 edited_df.loc[idx, 'Stato'] = "Pres_Pagato"
-                            elif sto in ["Attesa", "Confermato"]:
-                                edited_df.loc[idx, 'Stato'] = "Pagato"
 
                     df_pren = df_pren.drop(risultati.index)
                     df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
                     df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                    st.success("✅ Modifiche salvate con successo nel database (Stato aggiornato in automatico)!")
+                    st.success("✅ Modifiche salvate con successo nel database (Stato aggiornato a Presente e Pagato)!")
                     st.rerun()
             else:
                 st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
@@ -642,20 +638,17 @@ else:
         edited_range = st.data_editor(df_range[colonne_tabella], num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
         if st.button("💾 Salva Modifiche Tabella", type="primary"):
-            # AUTOMAZIONE: Se selezionano l'incasso, auto-aggiorna lo Stato
             for idx in edited_range.index:
                 inc = str(edited_range.loc[idx, 'Incassato_da'])
                 sto = str(edited_range.loc[idx, 'Stato'])
                 if inc not in ["", "nan", "Da saldare"]:
-                    if sto == "Presente":
+                    if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
                         edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
-                    elif sto in ["Attesa", "Confermato"]:
-                        edited_range.loc[idx, 'Stato'] = "Pagato"
 
             df_pren = df_pren.drop(df_range.index)
             df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-            st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico)!")
+            st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico a Presente e Pagato)!")
             st.rerun()
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
