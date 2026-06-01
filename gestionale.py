@@ -239,29 +239,17 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
             totale_dovuto = df_cliente['Prezzo_Giorno'].sum()
             st.warning(f"💶 **Totale accumulato da saldare per {cliente_sel}: € {totale_dovuto:.2f}**")
             
-            st.markdown("### 🏷️ Opzioni di Sconto")
-            tipo_sconto = st.radio("Come vuoi applicare lo sconto?", 
-                                   ["Nessuno Sconto", "Prezzo Finale Arrotondato (Consigliato)", "Sconto in Percentuale (%)", "Sconto Fisso in Euro (€)"], 
-                                   horizontal=True)
-            
-            sconto_cumulativo = 0.0
+            st.markdown("### 🏷️ Inserisci il Saldo Finale")
             
             col_sc, col_inc = st.columns(2)
             with col_sc:
-                if tipo_sconto == "Prezzo Finale Arrotondato (Consigliato)":
-                    prezzo_finale = st.number_input("Inserisci la cifra esatta che il cliente deve pagare (es. 200):", min_value=0.0, max_value=float(totale_dovuto), value=float(totale_dovuto), step=1.0)
-                    sconto_cumulativo = totale_dovuto - prezzo_finale
-                    if sconto_cumulativo > 0:
-                        st.info(f"💡 Il gestionale applicherà automaticamente uno sconto di: € {sconto_cumulativo:.2f}")
+                prezzo_finale = st.number_input("Cifra arrotondata che il cliente paga (es. 200):", min_value=0.0, max_value=float(totale_dovuto), value=float(totale_dovuto), step=1.0)
+                sconto_cumulativo = totale_dovuto - prezzo_finale
+                percentuale_sconto = 0.0
                 
-                elif tipo_sconto == "Sconto in Percentuale (%)":
-                    perc_sconto = st.number_input("Inserisci la percentuale di sconto (es. 10 per 10%):", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
-                    sconto_cumulativo = totale_dovuto * (perc_sconto / 100.0)
-                    if sconto_cumulativo > 0:
-                        st.info(f"💡 Il gestionale applicherà automaticamente uno sconto di: € {sconto_cumulativo:.2f}")
-                
-                elif tipo_sconto == "Sconto Fisso in Euro (€)":
-                    sconto_cumulativo = st.number_input("Inserisci quanti Euro togliere dal totale:", min_value=0.0, max_value=float(totale_dovuto), value=0.0, step=1.0)
+                if sconto_cumulativo > 0 and totale_dovuto > 0:
+                    percentuale_sconto = (sconto_cumulativo / totale_dovuto) * 100
+                    st.info(f"💡 Sconto applicato: **€ {sconto_cumulativo:.2f}** (pari al **{percentuale_sconto:.1f}%**)")
                     
             with col_inc:
                 incassato_da_cum = st.selectbox("💰 I soldi sono incassati in questo momento da:", OPERATORI_SPIAGGIA, key="inc_cum")
@@ -277,7 +265,7 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     df_pren.loc[ultimo_idx, 'Prezzo_Giorno'] -= sconto_cumulativo
                     df_pren.loc[ultimo_idx, 'Sconto'] = sconto_cumulativo
                     nota_esistente = str(df_pren.loc[ultimo_idx, 'Note']) if pd.notna(df_pren.loc[ultimo_idx, 'Note']) else ""
-                    df_pren.loc[ultimo_idx, 'Note'] = f"Sconto applicato al saldo. " + nota_esistente
+                    df_pren.loc[ultimo_idx, 'Note'] = f"Sconto €{sconto_cumulativo:.2f} ({percentuale_sconto:.1f}%). " + nota_esistente
                 
                 for idx in indici:
                     df_pren.loc[idx, 'Incassato_da'] = incassato_da_cum
