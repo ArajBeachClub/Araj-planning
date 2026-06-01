@@ -141,6 +141,7 @@ STATI_MAP = {
 }
 
 CONFIGURAZIONE_COLONNE = {
+    "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
     "Fila": st.column_config.SelectboxColumn("Fila", options=list(CAPIENZA_FILE.keys())),
     "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
@@ -309,6 +310,8 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
 
                     df_pren = df_pren.drop(risultati.index)
                     df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
+                    # Sicurezza per evitare errori di formato data
+                    df_pren['Data'] = pd.to_datetime(df_pren['Data']).dt.strftime('%Y-%m-%d')
                     df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
                     st.success("✅ Modifiche salvate con successo nel database (Stato aggiornato a Presente e Pagato)!")
                     st.rerun()
@@ -460,7 +463,7 @@ if os.path.exists(FILE_PRENOTAZIONI):
         st.sidebar.download_button(
             label="⬇️ Scarica Database Prenotazioni",
             data=f,
-            file_name=f"prenotazioni_{date.today().strftime('%Y-%m-%d')}.csv",
+            file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv",
             mime="text/csv",
             type="primary"
         )
@@ -654,6 +657,7 @@ else:
 
             df_pren = df_pren.drop(df_range.index)
             df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
+            df_pren['Data'] = pd.to_datetime(df_pren['Data']).dt.strftime('%Y-%m-%d')
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
             st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico a Presente e Pagato)!")
             st.rerun()
@@ -682,7 +686,7 @@ else:
         st.download_button(
             label="⬇️ Scarica Report in Excel/CSV",
             data=csv_report,
-            file_name=f"Report_Spiaggia_{data_inizio_vis}.csv",
+            file_name=f"Report_Spiaggia_{data_inizio_vis.strftime('%d-%m-%Y')}.csv",
             mime="text/csv",
             type="primary"
         )
