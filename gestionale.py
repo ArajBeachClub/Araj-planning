@@ -224,7 +224,7 @@ df_pren = carica_prenotazioni()
 
 # --- 💼 SALDO CLIENTI ABITUALI (PAGAMENTO A FINE MESE/PERIODO) ---
 with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di fine periodo)", expanded=False):
-    st.info("Usa questa sezione per far pagare in un colpo solo tutte le giornate accumulate da un cliente e per applicare eventuali sconti speciali concessi da Alberto.")
+    st.info("Usa questa sezione per far pagare in un colpo solo tutte le giornate accumulate da un cliente.")
     
     clienti_con_debiti = df_pren[df_pren['Incassato_da'] == "Da saldare"]['Nome'].dropna().unique().tolist()
     clienti_con_debiti = [c for c in clienti_con_debiti if str(c).strip() != ""]
@@ -239,14 +239,35 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
             totale_dovuto = df_cliente['Prezzo_Giorno'].sum()
             st.warning(f"💶 **Totale accumulato da saldare per {cliente_sel}: € {totale_dovuto:.2f}**")
             
+            st.markdown("### 🏷️ Opzioni di Sconto")
+            tipo_sconto = st.radio("Come vuoi applicare lo sconto?", 
+                                   ["Nessuno Sconto", "Prezzo Finale Arrotondato (Consigliato)", "Sconto in Percentuale (%)", "Sconto Fisso in Euro (€)"], 
+                                   horizontal=True)
+            
+            sconto_cumulativo = 0.0
+            
             col_sc, col_inc = st.columns(2)
             with col_sc:
-                sconto_cumulativo = st.number_input("📉 Sconto Finale (€) applicato:", min_value=0.0, max_value=float(totale_dovuto), value=0.0, step=1.0)
+                if tipo_sconto == "Prezzo Finale Arrotondato (Consigliato)":
+                    prezzo_finale = st.number_input("Inserisci la cifra esatta che il cliente deve pagare (es. 200):", min_value=0.0, max_value=float(totale_dovuto), value=float(totale_dovuto), step=1.0)
+                    sconto_cumulativo = totale_dovuto - prezzo_finale
+                    if sconto_cumulativo > 0:
+                        st.info(f"💡 Il gestionale applicherà automaticamente uno sconto di: € {sconto_cumulativo:.2f}")
+                
+                elif tipo_sconto == "Sconto in Percentuale (%)":
+                    perc_sconto = st.number_input("Inserisci la percentuale di sconto (es. 10 per 10%):", min_value=0.0, max_value=100.0, value=0.0, step=1.0)
+                    sconto_cumulativo = totale_dovuto * (perc_sconto / 100.0)
+                    if sconto_cumulativo > 0:
+                        st.info(f"💡 Il gestionale applicherà automaticamente uno sconto di: € {sconto_cumulativo:.2f}")
+                
+                elif tipo_sconto == "Sconto Fisso in Euro (€)":
+                    sconto_cumulativo = st.number_input("Inserisci quanti Euro togliere dal totale:", min_value=0.0, max_value=float(totale_dovuto), value=0.0, step=1.0)
+                    
             with col_inc:
                 incassato_da_cum = st.selectbox("💰 I soldi sono incassati in questo momento da:", OPERATORI_SPIAGGIA, key="inc_cum")
                 
             totale_scontato = totale_dovuto - sconto_cumulativo
-            st.success(f"💳 **TOTALE NETTO CHE IL CLIENTE DEVE PAGARE ORA: € {totale_scontato:.2f}**")
+            st.success(f"💳 **TOTALE NETTO CHE IL CLIENTE PAGA ORA: € {totale_scontato:.2f}**")
             
             if st.button("✅ Registra Saldo Definitivo (Aggiorna tutto)"):
                 indici = df_cliente.index.tolist()
@@ -256,18 +277,16 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     df_pren.loc[ultimo_idx, 'Prezzo_Giorno'] -= sconto_cumulativo
                     df_pren.loc[ultimo_idx, 'Sconto'] = sconto_cumulativo
                     nota_esistente = str(df_pren.loc[ultimo_idx, 'Note']) if pd.notna(df_pren.loc[ultimo_idx, 'Note']) else ""
-                    df_pren.loc[ultimo_idx, 'Note'] = f"Sconto totale €{sconto_cumulativo}. " + nota_esistente
+                    df_pren.loc[ultimo_idx, 'Note'] = f"Sconto applicato al saldo. " + nota_esistente
                 
                 for idx in indici:
                     df_pren.loc[idx, 'Incassato_da'] = incassato_da_cum
                     stato_attuale = df_pren.loc[idx, 'Stato']
-                    if stato_attuale == "Presente":
+                    if stato_attuale in ["Attesa", "Confermato", "Presente", "Pagato"]:
                         df_pren.loc[idx, 'Stato'] = "Pres_Pagato"
-                    elif stato_attuale in ["Attesa", "Confermato"]:
-                        df_pren.loc[idx, 'Stato'] = "Pagato"
                         
                 df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                st.success(f"Perfetto! Tutte le {len(indici)} postazioni di {cliente_sel} sono state saldate con successo.")
+                st.success(f"Perfetto! Tutte le {len(indici)} postazioni di {cliente_sel} sono state saldate e aggiornate a 'Presente e Pagato'.")
                 st.rerun()
 
 # --- 🔍 MOTORE DI RICERCA INTELLIGENTE ---
