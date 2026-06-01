@@ -140,6 +140,7 @@ STATI_MAP = {
     "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
+# Configurazione della colonna Data per mostrare Giorno/Mese/Anno
 CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
@@ -296,7 +297,10 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} prenotazioni. Fai doppio clic sulle celle per modificarle!")
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
-                risultati_filtrati = risultati[colonne_ordine]
+                
+                # CORREZIONE ERRORE TABELLA: Trasformo la data in formato corretto prima di mostrarla
+                risultati_filtrati = risultati[colonne_ordine].copy()
+                risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data']).dt.date
                 
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
@@ -309,11 +313,11 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 edited_df.loc[idx, 'Stato'] = "Pres_Pagato"
 
                     df_pren = df_pren.drop(risultati.index)
+                    # Riporto la data al formato standard per il salvataggio
+                    edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
                     df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
-                    # Sicurezza per evitare errori di formato data
-                    df_pren['Data'] = pd.to_datetime(df_pren['Data']).dt.strftime('%Y-%m-%d')
                     df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                    st.success("✅ Modifiche salvate con successo nel database (Stato aggiornato a Presente e Pagato)!")
+                    st.success("✅ Modifiche salvate con successo nel database!")
                     st.rerun()
             else:
                 st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
@@ -645,7 +649,11 @@ else:
         if 'Hotel' in df_range.columns: 
             colonne_tabella.insert(4, "Hotel")
         
-        edited_range = st.data_editor(df_range[colonne_tabella], num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
+        # CORREZIONE ERRORE TABELLA: Trasformo la data in formato corretto prima di mostrarla
+        df_range_edit = df_range[colonne_tabella].copy()
+        df_range_edit['Data'] = pd.to_datetime(df_range_edit['Data']).dt.date
+        
+        edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
         if st.button("💾 Salva Modifiche Tabella", type="primary"):
             for idx in edited_range.index:
@@ -656,8 +664,9 @@ else:
                         edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
 
             df_pren = df_pren.drop(df_range.index)
+            # Riporto la data al formato standard per il salvataggio
+            edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
             df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
-            df_pren['Data'] = pd.to_datetime(df_pren['Data']).dt.strftime('%Y-%m-%d')
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
             st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico a Presente e Pagato)!")
             st.rerun()
