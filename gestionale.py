@@ -20,7 +20,7 @@ FILE_CLIENTI = 'clienti.csv'
 # 👤 TEAM E OPERATORI
 # ==========================================
 OPERATORI_SPIAGGIA = ["Hiba Laawissi", "Rachele Filippin", "Federica Nebuloni", "Matilde Montis", "Eduardo Bustamante", "Alberto Bertolotti"]
-OPZIONI_INCASSO = ["Da saldare"] + OPERATORI_SPIAGGIA
+OPZIONI_INCASSO = ["Da saldare", "Ospite (Gratis)"] + OPERATORI_SPIAGGIA
 
 # ==========================================
 # 🤖 CONFIGURAZIONE BOT TELEGRAM (GRATIS)
@@ -140,7 +140,6 @@ STATI_MAP = {
     "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
-# Configurazione della colonna Data per mostrare Giorno/Mese/Anno
 CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
@@ -298,7 +297,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 st.success(f"Trovate {len(risultati)} prenotazioni. Fai doppio clic sulle celle per modificarle!")
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
                 
-                # CORREZIONE ERRORE TABELLA: Trasformo la data in formato corretto prima di mostrarla
                 risultati_filtrati = risultati[colonne_ordine].copy()
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data']).dt.date
                 
@@ -308,12 +306,16 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     for idx in edited_df.index:
                         inc = str(edited_df.loc[idx, 'Incassato_da'])
                         sto = str(edited_df.loc[idx, 'Stato'])
-                        if inc not in ["", "nan", "Da saldare"]:
+                        
+                        if inc == "Ospite (Gratis)":
+                            edited_df.loc[idx, 'Prezzo_Giorno'] = 0.0
+                            if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
+                                edited_df.loc[idx, 'Stato'] = "Pres_Pagato"
+                        elif inc not in ["", "nan", "Da saldare"]:
                             if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
                                 edited_df.loc[idx, 'Stato'] = "Pres_Pagato"
 
                     df_pren = df_pren.drop(risultati.index)
-                    # Riporto la data al formato standard per il salvataggio
                     edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
                     df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
                     df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
@@ -435,6 +437,12 @@ if submit:
                 giorno_corrente_str = giorno_corrente_obj.strftime("%Y-%m-%d")
                 prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
                 prezzo_finale_unitario = input_prezzo / quantita_postazioni if input_prezzo != prezzo_consigliato_totale else prezzo_giorno_unitario
+                
+                # SE È OSPITE, FORZA IL PREZZO A ZERO
+                if input_incassato == "Ospite (Gratis)":
+                    prezzo_finale_unitario = 0.0
+                    if stato_pulito in ["Attesa", "Confermato", "Presente"]:
+                        stato_pulito = "Pres_Pagato"
                 
                 for j in range(quantita_postazioni):
                     omb_corrente = input_ombrellone + j
@@ -649,7 +657,6 @@ else:
         if 'Hotel' in df_range.columns: 
             colonne_tabella.insert(4, "Hotel")
         
-        # CORREZIONE ERRORE TABELLA: Trasformo la data in formato corretto prima di mostrarla
         df_range_edit = df_range[colonne_tabella].copy()
         df_range_edit['Data'] = pd.to_datetime(df_range_edit['Data']).dt.date
         
@@ -659,16 +666,20 @@ else:
             for idx in edited_range.index:
                 inc = str(edited_range.loc[idx, 'Incassato_da'])
                 sto = str(edited_range.loc[idx, 'Stato'])
-                if inc not in ["", "nan", "Da saldare"]:
+                
+                if inc == "Ospite (Gratis)":
+                    edited_range.loc[idx, 'Prezzo_Giorno'] = 0.0
+                    if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
+                        edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
+                elif inc not in ["", "nan", "Da saldare"]:
                     if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
                         edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
 
             df_pren = df_pren.drop(df_range.index)
-            # Riporto la data al formato standard per il salvataggio
             edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
             df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-            st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico a Presente e Pagato)!")
+            st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico)!")
             st.rerun()
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
@@ -688,10 +699,15 @@ else:
         col_r2.metric("📉 Sconti Applicati Oggi", f"€ {totale_sconti:.2f}")
         col_r3.metric("👥 Totale Persone Registrate", f"{totale_persone}")
         
-        colonne_report = ["Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
-        st.dataframe(df_range[colonne_report].sort_values(by=["Fila", "Ombrellone"]), use_container_width=True)
+        colonne_report = ["Data", "Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
+        df_export = df_range[colonne_report].sort_values(by=["Data", "Fila", "Ombrellone"]).copy()
         
-        csv_report = df_range.to_csv(index=False).encode('utf-8')
+        # Converte le date al formato Giorno/Mese/Anno per la visualizzazione a schermo e stampa
+        df_export['Data'] = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
+        st.dataframe(df_export, use_container_width=True)
+        
+        # Salva usando il punto e virgola come separatore, così Excel italiano lo legge perfettamente!
+        csv_report = df_export.to_csv(index=False, sep=';').encode('utf-8')
         st.download_button(
             label="⬇️ Scarica Report in Excel/CSV",
             data=csv_report,
