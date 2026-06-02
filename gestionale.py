@@ -12,6 +12,7 @@ import os
 from datetime import date, timedelta
 import urllib.parse
 import urllib.request
+import io
 
 FILE_PRENOTAZIONI = 'prenotazioni.csv'
 FILE_CLIENTI = 'clienti.csv'
@@ -495,11 +496,15 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("💾 Salvataggio Sicuro (Backup)")
 st.sidebar.info("Scarica il database ogni sera per non perdere mai i dati in caso di riavvio del server!")
 
+# FORMATO BACKUP INVERTITO E CON TRATTINI: DD-MM-YYYY
 if os.path.exists(FILE_PRENOTAZIONI):
-    with open(FILE_PRENOTAZIONI, "rb") as f:
+    with open(FILE_PRENOTAZIONI, "r") as f:
+        df_backup = pd.read_csv(f)
+        df_backup['Data'] = pd.to_datetime(df_backup['Data']).dt.strftime('%d-%m-%Y')
+        csv_backup = df_backup.to_csv(index=False, sep=';').encode('utf-8')
         st.sidebar.download_button(
             label="⬇️ Scarica Database Prenotazioni",
-            data=f,
+            data=csv_backup,
             file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv",
             mime="text/csv",
             type="primary"
@@ -508,7 +513,9 @@ if os.path.exists(FILE_PRENOTAZIONI):
 file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup precedente", type=["csv"])
 if file_caricato is not None:
     if st.sidebar.button("⚠️ Conferma Ripristino Dati"):
-        df_ripristino = pd.read_csv(file_caricato)
+        df_ripristino = pd.read_csv(file_caricato, sep=None, engine='python')
+        # Lo converto internamente di nuovo in YYYY-MM-DD per le ricerche
+        df_ripristino['Data'] = pd.to_datetime(df_ripristino['Data'], format='%d-%m-%Y', errors='coerce').fillna(pd.to_datetime(df_ripristino['Data'], errors='coerce')).dt.strftime('%Y-%m-%d')
         df_ripristino.to_csv(FILE_PRENOTAZIONI, index=False)
         st.sidebar.success("✅ Ripristino completato! Ricarica la pagina.")
         st.rerun()
@@ -645,7 +652,6 @@ else:
                 box_html = f"<div style='background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 14px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
                 
-                # SEZIONE AZIONI RAPIDE (Appare solo se l'ombrellone è occupato)
                 if row_idx is not None:
                     widget_key = f"azione_rapida_{row_idx}_{data_inizio_vis}"
                     if widget_key not in st.session_state:
@@ -746,7 +752,8 @@ else:
         colonne_report = ["Data", "Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
         df_export = df_range[colonne_report].sort_values(by=["Data", "Fila", "Ombrellone"]).copy()
         
-        df_export['Data'] = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
+        # FORMATO REPORT CON TRATTINI: DD-MM-YYYY
+        df_export['Data'] = pd.to_datetime(df_export['Data']).dt.strftime('%d-%m-%Y')
         st.dataframe(df_export, use_container_width=True)
         
         csv_report = df_export.to_csv(index=False, sep=';').encode('utf-8')
