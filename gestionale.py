@@ -22,6 +22,15 @@ FILE_CLIENTI = 'clienti.csv'
 OPERATORI_SPIAGGIA = ["Hiba Laawissi", "Rachele Filippin", "Federica Nebuloni", "Matilde Montis", "Eduardo Bustamante", "Alberto Bertolotti"]
 OPZIONI_INCASSO = ["Da saldare", "Ospite (Gratis)"] + OPERATORI_SPIAGGIA
 
+MAPPA_NOMI_RAPIDI = {
+    "Hiba": "Hiba Laawissi",
+    "Rachele": "Rachele Filippin",
+    "Federica": "Federica Nebuloni",
+    "Eduardo": "Eduardo Bustamante",
+    "Matilde": "Matilde Montis",
+    "Alberto": "Alberto Bertolotti"
+}
+
 # ==========================================
 # 🤖 CONFIGURAZIONE BOT TELEGRAM (GRATIS)
 # ==========================================
@@ -217,6 +226,24 @@ def carica_prenotazioni():
         return df
     return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
 
+# ==========================================
+# ⚡ AZIONI RAPIDE DALLA MAPPA VISIVA
+# ==========================================
+def applica_azione_rapida(idx, widget_key):
+    azione = st.session_state[widget_key]
+    if azione != "⚡ Azione":
+        df = carica_prenotazioni()
+        if azione == "📍 Presente":
+            df.loc[idx, 'Stato'] = "Presente"
+        elif azione.startswith("💰 "):
+            nome_breve = azione.replace("💰 ", "")
+            if nome_breve in MAPPA_NOMI_RAPIDI:
+                df.loc[idx, 'Incassato_da'] = MAPPA_NOMI_RAPIDI[nome_breve]
+                df.loc[idx, 'Stato'] = "Pres_Pagato"
+        df.to_csv(FILE_PRENOTAZIONI, index=False)
+        st.session_state[widget_key] = "⚡ Azione"
+
+
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
 
@@ -309,11 +336,12 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                         
                         if inc == "Ospite (Gratis)":
                             edited_df.loc[idx, 'Prezzo_Giorno'] = 0.0
-                            if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
+                            
+                        if inc not in ["", "nan", "Da saldare"]:
+                            if sto == "Presente":
                                 edited_df.loc[idx, 'Stato'] = "Pres_Pagato"
-                        elif inc not in ["", "nan", "Da saldare"]:
-                            if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
-                                edited_df.loc[idx, 'Stato'] = "Pres_Pagato"
+                            elif sto in ["Attesa", "Confermato"]:
+                                edited_df.loc[idx, 'Stato'] = "Pagato"
 
                     df_pren = df_pren.drop(risultati.index)
                     edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
@@ -438,11 +466,8 @@ if submit:
                 prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
                 prezzo_finale_unitario = input_prezzo / quantita_postazioni if input_prezzo != prezzo_consigliato_totale else prezzo_giorno_unitario
                 
-                # SE È OSPITE, FORZA IL PREZZO A ZERO
                 if input_incassato == "Ospite (Gratis)":
                     prezzo_finale_unitario = 0.0
-                    if stato_pulito in ["Attesa", "Confermato", "Presente"]:
-                        stato_pulito = "Pres_Pagato"
                 
                 for j in range(quantita_postazioni):
                     omb_corrente = input_ombrellone + j
@@ -568,7 +593,7 @@ else:
 
         def controlla_posto(numero_ombrellone, fila):
             record = df_range[(df_range['Ombrellone'] == numero_ombrellone) & (df_range['Fila'] == fila)]
-            if record.empty: return "#28a745", "Libero", "", "", ""
+            if record.empty: return "#28a745", "Libero", "", "", "", None
             
             ultimo_record = record.iloc[-1]
             
@@ -608,16 +633,34 @@ else:
             elif stato == "Libero_Pom":
                 colore_box = "#17a2b8"
                 badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌇 LIBERO POMERIGG.</span><br>"
-            return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile
+            
+            return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile, ultimo_record.name
 
         for nome_fila, max_posti in CAPIENZA_FILE.items():
             st.subheader(nome_fila)
             colonne_griglia = st.columns(max_posti) 
             for i in range(max_posti):
                 numero_omb = i + 1
-                colore_box, titolo, sottotitolo, hotel_str, badge_rivend = controlla_posto(numero_omb, nome_fila)
+                colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx = controlla_posto(numero_omb, nome_fila)
                 box_html = f"<div style='background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 14px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
+                
+                # SEZIONE AZIONI RAPIDE (Appare solo se l'ombrellone è occupato)
+                if row_idx is not None:
+                    widget_key = f"azione_rapida_{row_idx}_{data_inizio_vis}"
+                    if widget_key not in st.session_state:
+                        st.session_state[widget_key] = "⚡ Azione"
+                    
+                    opzioni_rapide = ["⚡ Azione", "📍 Presente"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()]
+                    
+                    colonne_griglia[i].selectbox(
+                        "Azione Rapida",
+                        options=opzioni_rapide,
+                        label_visibility="collapsed",
+                        key=widget_key,
+                        on_change=applica_azione_rapida,
+                        args=(row_idx, widget_key)
+                    )
 
     else:
         # VISTA PERIODO CONTINUO (RADAR DISPONIBILITÀ)
@@ -669,11 +712,12 @@ else:
                 
                 if inc == "Ospite (Gratis)":
                     edited_range.loc[idx, 'Prezzo_Giorno'] = 0.0
-                    if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
+                    
+                if inc not in ["", "nan", "Da saldare"]:
+                    if sto == "Presente":
                         edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
-                elif inc not in ["", "nan", "Da saldare"]:
-                    if sto in ["Attesa", "Confermato", "Presente", "Pagato"]:
-                        edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
+                    elif sto in ["Attesa", "Confermato"]:
+                        edited_range.loc[idx, 'Stato'] = "Pagato"
 
             df_pren = df_pren.drop(df_range.index)
             edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
@@ -702,11 +746,9 @@ else:
         colonne_report = ["Data", "Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
         df_export = df_range[colonne_report].sort_values(by=["Data", "Fila", "Ombrellone"]).copy()
         
-        # Converte le date al formato Giorno/Mese/Anno per la visualizzazione a schermo e stampa
         df_export['Data'] = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
         st.dataframe(df_export, use_container_width=True)
         
-        # Salva usando il punto e virgola come separatore, così Excel italiano lo legge perfettamente!
         csv_report = df_export.to_csv(index=False, sep=';').encode('utf-8')
         st.download_button(
             label="⬇️ Scarica Report in Excel/CSV",
