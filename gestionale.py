@@ -10,9 +10,11 @@ import streamlit as st
 import pandas as pd
 import os
 import shutil
+import requests
 from datetime import date, timedelta, datetime
 import urllib.parse
 import urllib.request
+import io
 
 FILE_PRENOTAZIONI = 'prenotazioni.csv'
 FILE_CLIENTI = 'clienti.csv'
@@ -40,11 +42,9 @@ TELEGRAM_CHAT_ID = "8663794616"
 
 def controllo_backup_automatico():
     try:
-        # Calcolo ora italiana (estate = UTC+2)
         ora_italia = datetime.utcnow() + timedelta(hours=2)
         oggi_str = ora_italia.strftime('%d-%m-%Y')
         
-        # Scatta solo se sono passate le 20:00
         if ora_italia.hour >= 20:
             ha_gia_fatto = False
             if os.path.exists("ultimo_backup.txt"):
@@ -53,7 +53,6 @@ def controllo_backup_automatico():
                         ha_gia_fatto = True
             
             if not ha_gia_fatto and os.path.exists(FILE_PRENOTAZIONI):
-                # 1. Salva direttamente nel server (cartella invisibile)
                 if not os.path.exists("backups_automatici"):
                     os.makedirs("backups_automatici")
                 
@@ -66,7 +65,6 @@ def controllo_backup_automatico():
                 except Exception:
                     shutil.copy(FILE_PRENOTAZIONI, file_destinazione)
                 
-                # 2. Invia copia sicurezza fisica su Telegram (senza usare librerie esterne)
                 url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
                 boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
                 
@@ -89,7 +87,6 @@ def controllo_backup_automatico():
                 req = urllib.request.Request(url, data=payload, headers={'Content-Type': f'multipart/form-data; boundary={boundary}'})
                 urllib.request.urlopen(req, timeout=10)
                 
-                # 3. Registra che per oggi abbiamo salvato
                 with open("ultimo_backup.txt", "w") as f:
                     f.write(oggi_str)
                     
@@ -406,6 +403,9 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
                 if st.button("💾 Salva Modifiche da Ricerca"):
+                    df_pren_temp = df_pren.drop(risultati.index)
+                    has_overlap = False
+                    
                     for idx in edited_df.index:
                         inc = str(edited_df.loc[idx, 'Incassato_da'])
                         sto = str(edited_df.loc[idx, 'Stato'])
@@ -419,12 +419,30 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                             elif sto in ["Attesa", "Confermato"]:
                                 edited_df.loc[idx, 'Stato'] = "Pagato"
 
-                    df_pren = df_pren.drop(risultati.index)
-                    edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
-                    df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
-                    df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                    st.success("✅ Modifiche salvate con successo nel database!")
-                    st.rerun()
+                        # CONTROLLO ANTI-SOVRAPPOSIZIONE
+                        stato_finale = edited_df.loc[idx, 'Stato']
+                        d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
+                        fila = edited_df.loc[idx, 'Fila']
+                        omb = edited_df.loc[idx, 'Ombrellone']
+
+                        if stato_finale != "Libero":
+                            overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
+                                                   (df_pren_temp['Fila'] == fila) & 
+                                                   (df_pren_temp['Ombrellone'] == omb) &
+                                                   (df_pren_temp['Stato'] != "Libero")]
+                            if not overlap.empty:
+                                nome_occ = overlap.iloc[0]['Nome']
+                                st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
+                                has_overlap = True
+                                break
+
+                    if not has_overlap:
+                        df_pren = df_pren_temp
+                        edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
+                        df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
+                        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+                        st.success("✅ Modifiche salvate con successo nel database!")
+                        st.rerun()
             else:
                 st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
         else:
@@ -475,9 +493,9 @@ with st.sidebar.form("form_prenotazione"):
         
     st.markdown("---")
     
-    input_telefono = st.text_input("Telefono Cliente (Opzionale)").strip()
-    
+    # ORDINE INVERTITO: NOME PRIMA DEL TELEFONO
     input_nome = st.text_input("Nome Cliente (Obbligatorio)").strip()
+    input_telefono = st.text_input("Telefono Cliente (Opzionale)").strip()
     input_hotel = st.text_input("Nome Hotel (Opzionale)").strip()
     
     st.markdown("---")
@@ -806,6 +824,9 @@ else:
         edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
         if st.button("💾 Salva Modifiche Tabella", type="primary"):
+            df_pren_temp = df_pren.drop(df_range.index)
+            has_overlap = False
+            
             for idx in edited_range.index:
                 inc = str(edited_range.loc[idx, 'Incassato_da'])
                 sto = str(edited_range.loc[idx, 'Stato'])
@@ -819,12 +840,30 @@ else:
                     elif sto in ["Attesa", "Confermato"]:
                         edited_range.loc[idx, 'Stato'] = "Pagato"
 
-            df_pren = df_pren.drop(df_range.index)
-            edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
-            df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
-            df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-            st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico)!")
-            st.rerun()
+                # CONTROLLO ANTI-SOVRAPPOSIZIONE
+                stato_finale = edited_range.loc[idx, 'Stato']
+                d_str = pd.to_datetime(edited_range.loc[idx, 'Data']).strftime('%Y-%m-%d')
+                fila = edited_range.loc[idx, 'Fila']
+                omb = edited_range.loc[idx, 'Ombrellone']
+
+                if stato_finale != "Libero":
+                    overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
+                                           (df_pren_temp['Fila'] == fila) & 
+                                           (df_pren_temp['Ombrellone'] == omb) &
+                                           (df_pren_temp['Stato'] != "Libero")]
+                    if not overlap.empty:
+                        nome_occ = overlap.iloc[0]['Nome']
+                        st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
+                        has_overlap = True
+                        break
+
+            if not has_overlap:
+                df_pren = df_pren_temp
+                edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
+                df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
+                df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+                st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico se necessario)!")
+                st.rerun()
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
 
