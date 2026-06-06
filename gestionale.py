@@ -122,9 +122,9 @@ def normalizza_tel(t):
 CAPIENZA_FILE = {
     "Prima Fila": 17,
     "Seconda Fila": 16,
-    "Terza Fila": 9,
-    "Quarta Fila": 8,
-    "Quinta Fila": 8,
+    "Terza Fila": 10,
+    "Quarta Fila": 6,
+    "Quinta Fila": 5,
     "Sesta Fila (Altre)": 8,
     "Spiaggia Libera / Esterna": 5
 }
