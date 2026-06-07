@@ -698,7 +698,7 @@ else:
         df_range = pd.DataFrame()
 
     if giorni_totali_vis == 1:
-        # VISTA SINGOLA DATA (DISPOSIZIONE FISICA)
+        # VISTA SINGOLA DATA (RAGGRUPPAMENTO LOGICO, ETICHETTA FISICA)
         data_formattata_ita = f"{data_inizio_vis.day} {MESI_ITA[data_inizio_vis.month]} {data_inizio_vis.year}"
         
         st.header(f"📅 Planning del {data_formattata_ita}")
@@ -759,43 +759,44 @@ else:
             
             return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile, ultimo_record.name
 
-        # MAPPATURA FISICA DELLA SPIAGGIA
-        struttura_fisica = [
-            {"nome": "🏖️ 1° FILA FISICA (Fronte Mare)", "ombrelloni": [("Prima Fila", i) for i in range(1, 15)]},
-            {"nome": "🏖️ 2° FILA FISICA", "ombrelloni": [("Prima Fila", 15), ("Prima Fila", 16)] + [("Seconda Fila", i) for i in range(1, 15)]},
-            {"nome": "🏖️ 3° FILA FISICA", "ombrelloni": [("Prima Fila", 17), ("Seconda Fila", 15), ("Seconda Fila", 16)] + [("Terza Fila", i) for i in range(1, 10)]},
-            {"nome": "🏖️ 4° FILA FISICA", "ombrelloni": [("Quarta Fila", i) for i in range(1, 9)]},
-            {"nome": "🏖️ 5° FILA FISICA", "ombrelloni": [("Quinta Fila", i) for i in range(1, 9)]},
-            {"nome": "🏖️ 6° FILA FISICA", "ombrelloni": [("Sesta Fila (Altre)", i) for i in range(1, 9)]},
-            {"nome": "🏖️ SPIAGGIA LIBERA", "ombrelloni": [("Spiaggia Libera / Esterna", i) for i in range(1, 6)]}
-        ]
-
-        for fila_fisica in struttura_fisica:
-            st.subheader(fila_fisica["nome"])
-            posti = fila_fisica["ombrelloni"]
-            colonne_griglia = st.columns(len(posti))
-            
-            for idx, (nome_fila_logica, numero_omb) in enumerate(posti):
-                colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx = controlla_posto(numero_omb, nome_fila_logica)
+        for nome_fila, max_posti in CAPIENZA_FILE.items():
+            st.subheader(nome_fila)
+            colonne_griglia = st.columns(max_posti) 
+            for i in range(max_posti):
+                numero_omb = i + 1
+                colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx = controlla_posto(numero_omb, nome_fila)
                 
+                # LOGICA ETICHETTE PERSONALIZZATE
                 etichetta = ""
-                if nome_fila_logica == "Prima Fila": etichetta = "1ª Fila"
-                elif nome_fila_logica == "Seconda Fila": etichetta = "2ª Fila"
-                elif nome_fila_logica == "Terza Fila": etichetta = "3ª Fila"
-                else: etichetta = nome_fila_logica
+                if nome_fila == "Prima Fila":
+                    if numero_omb in [15, 16]:
+                        etichetta = "Fisicamente in 2ª Fila"
+                    elif numero_omb == 17:
+                        etichetta = "Fisicamente in 3ª Fila"
+                    else:
+                        etichetta = "1ª Fila"
+                elif nome_fila == "Seconda Fila":
+                    if numero_omb in [15, 16]:
+                        etichetta = "Fisicamente in 3ª Fila"
+                    else:
+                        etichetta = "2ª Fila"
+                elif nome_fila == "Terza Fila":
+                    etichetta = "3ª Fila"
+                else:
+                    etichetta = nome_fila
                 
                 box_html = f"<div style='background-color: {colore_box}; padding: 6px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 10px; font-weight: normal; color: rgba(255,255,255,0.8); display: block;'>{etichetta}</span><span style='font-size: 16px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
                 
-                colonne_griglia[idx].markdown(box_html, unsafe_allow_html=True)
+                colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
                 
                 if row_idx is not None:
-                    widget_key = f"azione_rapida_{row_idx}_{nome_fila_logica}_{numero_omb}_{data_inizio_vis}"
+                    widget_key = f"azione_rapida_{row_idx}_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                     if widget_key not in st.session_state:
                         st.session_state[widget_key] = "⚡ Azione"
                     
                     opzioni_rapide = ["⚡ Azione", "📍 Presente"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()]
                     
-                    colonne_griglia[idx].selectbox(
+                    colonne_griglia[i].selectbox(
                         "Azione Rapida",
                         options=opzioni_rapide,
                         label_visibility="collapsed",
