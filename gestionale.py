@@ -10,11 +10,9 @@ import streamlit as st
 import pandas as pd
 import os
 import shutil
-import requests
 from datetime import date, timedelta, datetime
 import urllib.parse
 import urllib.request
-import io
 
 FILE_PRENOTAZIONI = 'prenotazioni.csv'
 FILE_CLIENTI = 'clienti.csv'
@@ -493,7 +491,6 @@ with st.sidebar.form("form_prenotazione"):
         
     st.markdown("---")
     
-    # ORDINE INVERTITO: NOME PRIMA DEL TELEFONO
     input_nome = st.text_input("Nome Cliente (Obbligatorio)").strip()
     input_telefono = st.text_input("Telefono Cliente (Opzionale)").strip()
     input_hotel = st.text_input("Nome Hotel (Opzionale)").strip()
@@ -701,14 +698,22 @@ else:
         df_range = pd.DataFrame()
 
     if giorni_totali_vis == 1:
-        # VISTA SINGOLA DATA
+        # VISTA SINGOLA DATA (DISPOSIZIONE FISICA)
         data_formattata_ita = f"{data_inizio_vis.day} {MESI_ITA[data_inizio_vis.month]} {data_inizio_vis.year}"
+        
         st.header(f"📅 Planning del {data_formattata_ita}")
+        
+        st.markdown("""
+        <div style="text-align: right; margin-bottom: 10px;">
+            <button onclick="window.print()" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                🖨️ Stampa Planning (Quadratini)
+            </button>
+        </div>
+        """, unsafe_allow_html=True)
         st.divider()
 
         def controlla_posto(numero_ombrellone, fila):
-            if df_range.empty:
-                return "#28a745", "Libero", "", "", "", None
+            if df_range.empty: return "#28a745", "Libero", "", "", "", None
             record = df_range[(df_range['Ombrellone'] == numero_ombrellone) & (df_range['Fila'] == fila)]
             if record.empty: 
                 return "#28a745", "Libero", "", "", "", None
@@ -754,23 +759,43 @@ else:
             
             return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile, ultimo_record.name
 
-        for nome_fila, max_posti in CAPIENZA_FILE.items():
-            st.subheader(nome_fila)
-            colonne_griglia = st.columns(max_posti) 
-            for i in range(max_posti):
-                numero_omb = i + 1
-                colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx = controlla_posto(numero_omb, nome_fila)
-                box_html = f"<div style='background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 14px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
-                colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
+        # MAPPATURA FISICA DELLA SPIAGGIA
+        struttura_fisica = [
+            {"nome": "🏖️ 1° FILA FISICA (Fronte Mare)", "ombrelloni": [("Prima Fila", i) for i in range(1, 15)]},
+            {"nome": "🏖️ 2° FILA FISICA", "ombrelloni": [("Prima Fila", 15), ("Prima Fila", 16)] + [("Seconda Fila", i) for i in range(1, 15)]},
+            {"nome": "🏖️ 3° FILA FISICA", "ombrelloni": [("Prima Fila", 17), ("Seconda Fila", 15), ("Seconda Fila", 16)] + [("Terza Fila", i) for i in range(1, 10)]},
+            {"nome": "🏖️ 4° FILA FISICA", "ombrelloni": [("Quarta Fila", i) for i in range(1, 9)]},
+            {"nome": "🏖️ 5° FILA FISICA", "ombrelloni": [("Quinta Fila", i) for i in range(1, 9)]},
+            {"nome": "🏖️ 6° FILA FISICA", "ombrelloni": [("Sesta Fila (Altre)", i) for i in range(1, 9)]},
+            {"nome": "🏖️ SPIAGGIA LIBERA", "ombrelloni": [("Spiaggia Libera / Esterna", i) for i in range(1, 6)]}
+        ]
+
+        for fila_fisica in struttura_fisica:
+            st.subheader(fila_fisica["nome"])
+            posti = fila_fisica["ombrelloni"]
+            colonne_griglia = st.columns(len(posti))
+            
+            for idx, (nome_fila_logica, numero_omb) in enumerate(posti):
+                colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx = controlla_posto(numero_omb, nome_fila_logica)
+                
+                etichetta = ""
+                if nome_fila_logica == "Prima Fila": etichetta = "1ª Fila"
+                elif nome_fila_logica == "Seconda Fila": etichetta = "2ª Fila"
+                elif nome_fila_logica == "Terza Fila": etichetta = "3ª Fila"
+                else: etichetta = nome_fila_logica
+                
+                box_html = f"<div style='background-color: {colore_box}; padding: 6px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 10px; font-weight: normal; color: rgba(255,255,255,0.8); display: block;'>{etichetta}</span><span style='font-size: 16px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
+                
+                colonne_griglia[idx].markdown(box_html, unsafe_allow_html=True)
                 
                 if row_idx is not None:
-                    widget_key = f"azione_rapida_{row_idx}_{data_inizio_vis}"
+                    widget_key = f"azione_rapida_{row_idx}_{nome_fila_logica}_{numero_omb}_{data_inizio_vis}"
                     if widget_key not in st.session_state:
                         st.session_state[widget_key] = "⚡ Azione"
                     
                     opzioni_rapide = ["⚡ Azione", "📍 Presente"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()]
                     
-                    colonne_griglia[i].selectbox(
+                    colonne_griglia[idx].selectbox(
                         "Azione Rapida",
                         options=opzioni_rapide,
                         label_visibility="collapsed",
