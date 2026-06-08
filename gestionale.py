@@ -121,7 +121,7 @@ CAPIENZA_FILE = {
     "Prima Fila": 17,
     "Seconda Fila": 16,
     "Terza Fila": 9,
-    "Quarta Fila": 8,
+    "Quarta Fila": 7,
     "Quinta Fila": 5,
     "Sesta Fila (Altre)": 8,
     "Spiaggia Libera / Esterna": 5
@@ -698,16 +698,16 @@ else:
         df_range = pd.DataFrame()
 
     if giorni_totali_vis == 1:
-        # VISTA SINGOLA DATA (RAGGRUPPAMENTO LOGICO, ETICHETTA FISICA)
+        # VISTA SINGOLA DATA
         data_formattata_ita = f"{data_inizio_vis.day} {MESI_ITA[data_inizio_vis.month]} {data_inizio_vis.year}"
-        
         st.header(f"📅 Planning del {data_formattata_ita}")
         
         st.markdown("""
         <div style="text-align: right; margin-bottom: 10px;">
-            <button onclick="window.print()" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+            <button onclick="window.parent.print(); window.print();" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 🖨️ Stampa Planning (Quadratini)
             </button>
+            <p style="font-size: 12px; color: gray; margin-top: 5px;">Se il tasto non funziona su iPhone, usa il tasto 'Condividi' del telefono ⬆️ e seleziona 'Stampa'.</p>
         </div>
         """, unsafe_allow_html=True)
         st.divider()
@@ -715,8 +715,7 @@ else:
         def controlla_posto(numero_ombrellone, fila):
             if df_range.empty: return "#28a745", "Libero", "", "", "", None
             record = df_range[(df_range['Ombrellone'] == numero_ombrellone) & (df_range['Fila'] == fila)]
-            if record.empty: 
-                return "#28a745", "Libero", "", "", "", None
+            if record.empty: return "#28a745", "Libero", "", "", "", None
             
             ultimo_record = record.iloc[-1]
             
@@ -847,6 +846,11 @@ else:
         df_range_edit = df_range[colonne_tabella].copy()
         df_range_edit['Data'] = pd.to_datetime(df_range_edit['Data'], errors='coerce').dt.date
         
+        # ORDINAMENTO LOGICO PER FILA E OMBRELLONE
+        df_range_edit['Fila'] = pd.Categorical(df_range_edit['Fila'], categories=list(CAPIENZA_FILE.keys()), ordered=True)
+        df_range_edit = df_range_edit.sort_values(by=['Data', 'Fila', 'Ombrellone'])
+        df_range_edit['Fila'] = df_range_edit['Fila'].astype(str)
+        
         edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
         if st.button("💾 Salva Modifiche Tabella", type="primary"):
@@ -909,7 +913,12 @@ else:
         col_r3.metric("👥 Totale Persone Registrate", f"{totale_persone}")
         
         colonne_report = ["Data", "Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
-        df_export = df_range[colonne_report].sort_values(by=["Data", "Fila", "Ombrellone"]).copy()
+        df_export = df_range[colonne_report].copy()
+        
+        # ORDINAMENTO LOGICO PER FILA E OMBRELLONE
+        df_export['Fila'] = pd.Categorical(df_export['Fila'], categories=list(CAPIENZA_FILE.keys()), ordered=True)
+        df_export = df_export.sort_values(by=["Data", "Fila", "Ombrellone"])
+        df_export['Fila'] = df_export['Fila'].astype(str)
         
         df_export['Data'] = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
         st.dataframe(df_export, use_container_width=True)
