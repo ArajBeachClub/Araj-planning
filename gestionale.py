@@ -698,8 +698,9 @@ else:
         df_range = pd.DataFrame()
 
     if giorni_totali_vis == 1:
-        # VISTA SINGOLA DATA
+        # VISTA SINGOLA DATA (RAGGRUPPAMENTO LOGICO, ETICHETTA FISICA)
         data_formattata_ita = f"{data_inizio_vis.day} {MESI_ITA[data_inizio_vis.month]} {data_inizio_vis.year}"
+        
         st.header(f"📅 Planning del {data_formattata_ita}")
         
         st.markdown("""
@@ -707,7 +708,7 @@ else:
             <button onclick="window.parent.print(); window.print();" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
                 🖨️ Stampa Planning (Quadratini)
             </button>
-            <p style="font-size: 12px; color: gray; margin-top: 5px;">Se il tasto non funziona su iPhone, usa il tasto 'Condividi' del telefono ⬆️ e seleziona 'Stampa'.</p>
+            <p style="font-size: 12px; color: gray; margin-top: 5px;">Se il tasto non funziona sul telefono, usa il tasto 'Condividi' in basso ⬆️ e seleziona 'Stampa'.</p>
         </div>
         """, unsafe_allow_html=True)
         st.divider()
