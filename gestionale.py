@@ -487,7 +487,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
 
 st.divider()
 
-# --- BARRA LATERALE (SENZA IL FORM CHE CREA PROBLEMI) ---
+# --- BARRA LATERALE (PULIZIA INTELLIGENTE DEL FORM) ---
 st.sidebar.header("📝 Gestione Prenotazioni")
 
 st.sidebar.subheader("1. Scegli Date e Fila")
@@ -519,34 +519,33 @@ st.sidebar.subheader("2. Completa Prenotazione")
 
 col_q, col_omb = st.sidebar.columns(2)
 with col_q:
-    quantita_postazioni = st.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
+    quantita_postazioni = st.sidebar.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
 
 max_start = max_ombrelloni_riga - quantita_postazioni + 1
 with col_omb:
     opzioni_ombrelloni = list(range(1, max(2, max_start + 1)))
-    input_ombrellone = st.selectbox(f"N° Ombrellone Iniziale", opzioni_ombrelloni, index=0)
+    input_ombrellone = st.sidebar.selectbox(f"N° Ombrellone Iniziale", opzioni_ombrelloni, index=0)
     
 st.sidebar.markdown("---")
 
-# Inizializzo lo stato per poter cancellare i testi dopo il salvataggio
-if 'form_nome' not in st.session_state: st.session_state['form_nome'] = ""
-if 'form_tel' not in st.session_state: st.session_state['form_tel'] = ""
-if 'form_hotel' not in st.session_state: st.session_state['form_hotel'] = ""
-if 'form_note' not in st.session_state: st.session_state['form_note'] = ""
+# Crea un contatore "segreto" per rinnovare le caselle vuote senza far arrabbiare Streamlit
+if 'reset_form' not in st.session_state:
+    st.session_state['reset_form'] = 0
+rk = st.session_state['reset_form']
 
-input_nome = st.sidebar.text_input("Nome Cliente (Obbligatorio)", key="form_nome").strip()
-input_telefono = st.sidebar.text_input("Telefono Cliente (Opzionale)", key="form_tel").strip()
-input_hotel = st.sidebar.text_input("Nome Hotel (Opzionale)", key="form_hotel").strip()
+input_nome = st.sidebar.text_input("Nome Cliente (Obbligatorio)", key=f"form_nome_{rk}").strip()
+input_telefono = st.sidebar.text_input("Telefono Cliente (Opzionale)", key=f"form_tel_{rk}").strip()
+input_hotel = st.sidebar.text_input("Nome Hotel (Opzionale)", key=f"form_hotel_{rk}").strip()
 
 st.sidebar.markdown("---")
 col_p, col_d = st.sidebar.columns(2)
 with col_p:
-    input_persone = st.selectbox("Persone (PER OMBRELLONE)", [1, 2, 3, 4, 5, 6], index=1)
+    input_persone = st.sidebar.selectbox("Persone (PER OMBRELLONE)", [1, 2, 3, 4, 5, 6], index=1)
 with col_d:
-    input_durata = st.selectbox("Durata", ["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"])
+    input_durata = st.sidebar.selectbox("Durata", ["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"])
 
 input_extra = st.sidebar.multiselect("🏖️ Risorse Aggiuntive Libere (per postazione)", list(PREZZI_EXTRA.keys()))
-input_note = st.sidebar.text_input("📝 Note / Memo (es. Ospite, Omaggio, Cagnolino)", key="form_note").strip()
+input_note = st.sidebar.text_input("📝 Note / Memo (es. Ospite, Omaggio, Cagnolino)", key=f"form_note_{rk}").strip()
 
 st.sidebar.markdown("---")
 
@@ -635,11 +634,8 @@ if submit:
             backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
             st.sidebar.success("✅ Salvataggio completato! I campi di testo si sono azzerati per la prossima prenotazione.")
             
-            # Svuota solo i campi di testo dopo il salvataggio
-            st.session_state['form_nome'] = ""
-            st.session_state['form_tel'] = ""
-            st.session_state['form_hotel'] = ""
-            st.session_state['form_note'] = ""
+            # TRUCCHETTO: Avanzo il contatore per far ricaricare a Streamlit delle caselle vuote senza errori
+            st.session_state['reset_form'] += 1
             st.rerun()
     else:
         st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente.")
