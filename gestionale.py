@@ -187,9 +187,10 @@ PREZZI_EXTRA = {
 
 MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
+# ORA "Confermato" È IN CIMA ALLA LISTA, QUINDI È IL PREDEFINITO ASSOLUTO
 STATI_MAP = {
-    "In Attesa (Giallo)": "Attesa",
     "Confermato (Rosso)": "Confermato",
+    "In Attesa (Giallo)": "Attesa",
     "Presente in Spiaggia (Viola)": "Presente",
     "Pagato (Blu)": "Pagato",
     "Presente e Pagato (Verde Acqua)": "Pres_Pagato",
@@ -200,7 +201,7 @@ STATI_MAP = {
 
 CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
-    "Stato": st.column_config.SelectboxColumn("Stato", options=["Attesa", "Confermato", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
+    "Stato": st.column_config.SelectboxColumn("Stato", options=["Confermato", "Attesa", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
     "Fila": st.column_config.SelectboxColumn("Fila", options=list(CAPIENZA_FILE.keys())),
     "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
@@ -487,7 +488,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
 
 st.divider()
 
-# --- BARRA LATERALE (PULIZIA INTELLIGENTE DEL FORM) ---
+# --- BARRA LATERALE ---
 st.sidebar.header("📝 Gestione Prenotazioni")
 
 st.sidebar.subheader("1. Scegli Date e Fila")
@@ -528,7 +529,6 @@ with col_omb:
     
 st.sidebar.markdown("---")
 
-# Crea un contatore "segreto" per rinnovare le caselle vuote senza far arrabbiare Streamlit
 if 'reset_form' not in st.session_state:
     st.session_state['reset_form'] = 0
 rk = st.session_state['reset_form']
@@ -549,7 +549,7 @@ input_note = st.sidebar.text_input("📝 Note / Memo (es. Ospite, Omaggio, Cagno
 
 st.sidebar.markdown("---")
 
-input_stato = st.sidebar.selectbox("Stato Postazione", list(STATI_MAP.keys()), index=1)
+input_stato = st.sidebar.selectbox("Stato Postazione", list(STATI_MAP.keys()))
 input_incassato = st.sidebar.selectbox("💰 Pagamento incassato da:", OPZIONI_INCASSO, help="Seleziona chi ha preso i soldi se il cliente ha già pagato")
 
 prezzo_consigliato_totale = 0.0
@@ -634,7 +634,6 @@ if submit:
             backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
             st.sidebar.success("✅ Salvataggio completato! I campi di testo si sono azzerati per la prossima prenotazione.")
             
-            # TRUCCHETTO: Avanzo il contatore per far ricaricare a Streamlit delle caselle vuote senza errori
             st.session_state['reset_form'] += 1
             st.rerun()
     else:
