@@ -97,16 +97,16 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE E STAGIONI
+# ⚙️ CONFIGURAZIONE TARIFFE, STAGIONI E NUOVA MAPPA 🏖️
 # ==========================================
 
 CAPIENZA_FILE = {
     "Prima Fila": 17,
     "Seconda Fila": 16,
-    "Terza Fila": 9,
+    "Terza Fila": 10,
     "Quarta Fila": 8,
-    "Quinta Fila": 8,
-    "Sesta Fila (Altre)": 8,
+    "Quinta Fila": 6,
+    "Sesta Fila (Altre)": 3,
     "Spiaggia Libera / Esterna": 5
 }
 
@@ -806,10 +806,8 @@ else:
                 
                 etichetta = ""
                 if nome_fila == "Prima Fila":
-                    if numero_omb in [15, 16]:
+                    if numero_omb in [16, 17]:
                         etichetta = "Fisicamente in 2ª Fila"
-                    elif numero_omb == 17:
-                        etichetta = "Fisicamente in 3ª Fila"
                     else:
                         etichetta = "1ª Fila"
                 elif nome_fila == "Seconda Fila":
