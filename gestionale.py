@@ -33,65 +33,48 @@ MAPPA_NOMI_RAPIDI = {
 }
 
 # ==========================================
-# 🤖 CONFIGURAZIONE BOT TELEGRAM E BACKUP
+# 🤖 BOT TELEGRAM E BACKUP IN TEMPO REALE
 # ==========================================
 TELEGRAM_TOKEN = "8804050943:AAHvXVmSnEUPlvV6mj33JGGQHfhosnqcC2U"
 TELEGRAM_CHAT_ID = "8663794616"  
 
-def controllo_backup_automatico():
-    try:
-        ora_italia = datetime.utcnow() + timedelta(hours=2)
-        oggi_str = ora_italia.strftime('%d-%m-%Y')
-        
-        if ora_italia.hour >= 20:
-            ha_gia_fatto = False
-            if os.path.exists("ultimo_backup.txt"):
-                with open("ultimo_backup.txt", "r") as f:
-                    if f.read().strip() == oggi_str:
-                        ha_gia_fatto = True
+def backup_istantaneo_telegram(azione_eseguita):
+    if os.path.exists(FILE_PRENOTAZIONI):
+        try:
+            ora_italia = datetime.utcnow() + timedelta(hours=2)
+            ora_attuale = ora_italia.strftime('%H:%M:%S')
+            data_oggi = ora_italia.strftime('%d-%m-%Y')
+            file_destinazione = f"Backup_Temporaneo.csv"
             
-            if not ha_gia_fatto and os.path.exists(FILE_PRENOTAZIONI):
-                if not os.path.exists("backups_automatici"):
-                    os.makedirs("backups_automatici")
+            df_bkp = pd.read_csv(FILE_PRENOTAZIONI)
+            df_bkp['Data'] = pd.to_datetime(df_bkp['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
+            df_bkp.to_csv(file_destinazione, index=False, sep=';')
+            
+            url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
+            boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
+            
+            body_top = (
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
+                f"{TELEGRAM_CHAT_ID}\r\n"
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="caption"\r\n\r\n'
+                f"🔄 BACKUP DI SICUREZZA\nModifica: {azione_eseguita}\n🕒 Ore: {ora_attuale}\n📅 {data_oggi}\r\n"
+                f"--{boundary}\r\n"
+                f'Content-Disposition: form-data; name="document"; filename="Backup_{data_oggi}_{ora_attuale.replace(":","")}.csv"\r\n'
+                f"Content-Type: text/csv\r\n\r\n"
+            ).encode('utf-8')
+            
+            with open(file_destinazione, 'rb') as f:
+                file_content = f.read()
                 
-                file_destinazione = f"backups_automatici/Backup_Spiaggia_{oggi_str}.csv"
-                
-                try:
-                    df_bkp = pd.read_csv(FILE_PRENOTAZIONI)
-                    df_bkp['Data'] = pd.to_datetime(df_bkp['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
-                    df_bkp.to_csv(file_destinazione, index=False, sep=';')
-                except Exception:
-                    shutil.copy(FILE_PRENOTAZIONI, file_destinazione)
-                
-                url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendDocument"
-                boundary = "----WebKitFormBoundary7MA4YWxkTrZu0gW"
-                
-                body_top = (
-                    f"--{boundary}\r\n"
-                    f'Content-Disposition: form-data; name="chat_id"\r\n\r\n'
-                    f"{TELEGRAM_CHAT_ID}\r\n"
-                    f"--{boundary}\r\n"
-                    f'Content-Disposition: form-data; name="document"; filename="Backup_Spiaggia_{oggi_str}.csv"\r\n'
-                    f"Content-Type: text/csv\r\n\r\n"
-                ).encode('utf-8')
-                
-                with open(file_destinazione, 'rb') as f:
-                    file_content = f.read()
-                    
-                body_bottom = f"\r\n--{boundary}--\r\n".encode('utf-8')
-                
-                payload = body_top + file_content + body_bottom
-                
-                req = urllib.request.Request(url, data=payload, headers={'Content-Type': f'multipart/form-data; boundary={boundary}'})
-                urllib.request.urlopen(req, timeout=10)
-                
-                with open("ultimo_backup.txt", "w") as f:
-                    f.write(oggi_str)
-                    
-                return True
-    except Exception:
-        pass
-    return False
+            body_bottom = f"\r\n--{boundary}--\r\n".encode('utf-8')
+            payload = body_top + file_content + body_bottom
+            
+            req = urllib.request.Request(url, data=payload, headers={'Content-Type': f'multipart/form-data; boundary={boundary}'})
+            urllib.request.urlopen(req, timeout=5)
+        except Exception:
+            pass
 
 def invia_notifica_telegram(messaggio):
     messaggio_codificato = urllib.parse.quote(messaggio)
@@ -121,14 +104,15 @@ CAPIENZA_FILE = {
     "Prima Fila": 17,
     "Seconda Fila": 16,
     "Terza Fila": 9,
-    "Quarta Fila": 7,
-    "Quinta Fila": 5,
+    "Quarta Fila": 8,
+    "Quinta Fila": 8,
     "Sesta Fila (Altre)": 8,
     "Spiaggia Libera / Esterna": 5
 }
 
 STAGIONI_DATE = {
-    "Media": [(date(2026, 5, 30), date(2026, 6, 19))],
+    "Media 1": [(date(2026, 5, 30), date(2026, 6, 12))],
+    "Media 2": [(date(2026, 6, 13), date(2026, 6, 19))],
     "Alta A": [(date(2026, 6, 20), date(2026, 7, 3))],
     "Alta B": [(date(2026, 7, 4), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
     "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 8, 24), date(2026, 8, 31))],
@@ -138,13 +122,22 @@ STAGIONI_DATE = {
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
 TARIFFE = {
-    "Media": {
+    "Media 1": {
         "Prima Fila": {"Feriale": [30, 7], "Festivo": [33, 9]},
         "Seconda Fila": {"Feriale": [28, 6], "Festivo": [31, 8]},
         "Terza Fila": {"Feriale": [28, 6], "Festivo": [31, 8]},
         "Quarta Fila": {"Feriale": [27, 5], "Festivo": [29, 7]},
         "Quinta Fila": {"Feriale": [27, 5], "Festivo": [29, 7]},
         "Sesta Fila (Altre)": {"Feriale": [26, 4], "Festivo": [27, 5]},
+        "Spiaggia Libera / Esterna": {"Feriale": [24, 0], "Festivo": [30, 0]}
+    },
+    "Media 2": {
+        "Prima Fila": {"Feriale": [33, 7], "Festivo": [35, 9]},
+        "Seconda Fila": {"Feriale": [30, 6], "Festivo": [33, 8]},
+        "Terza Fila": {"Feriale": [30, 6], "Festivo": [33, 8]},
+        "Quarta Fila": {"Feriale": [28, 5], "Festivo": [30, 7]},
+        "Quinta Fila": {"Feriale": [27, 5], "Festivo": [29, 7]},
+        "Sesta Fila (Altre)": {"Feriale": [27, 4], "Festivo": [29, 5]},
         "Spiaggia Libera / Esterna": {"Feriale": [24, 0], "Festivo": [30, 0]}
     },
     "Alta A": {
@@ -223,7 +216,7 @@ def trova_stagione(data_sel):
         for inizio, fine in intervalli:
             if inizio <= data_sel <= fine:
                 return stagione
-    return "Media"
+    return "Media 1"
 
 def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     stagione = trova_stagione(data_sel)
@@ -305,20 +298,41 @@ def applica_azione_rapida(idx, widget_key):
                     df.loc[idx, 'Incassato_da'] = MAPPA_NOMI_RAPIDI[nome_breve]
                     df.loc[idx, 'Stato'] = "Pres_Pagato"
             df.to_csv(FILE_PRENOTAZIONI, index=False)
+            backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
 
+def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore):
+    nome_cliente = st.session_state[widget_key].strip()
+    if nome_cliente:
+        df = carica_prenotazioni()
+        data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
+        prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
+        
+        nuova_p = pd.DataFrame([{
+            "Data": data_str, "Fila": fila, "Ombrellone": omb,
+            "Nome": nome_cliente, "Telefono": "", "Stato": "Presente",
+            "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
+            "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
+            "Note": "", "Operatore": operatore, "Incassato_da": "Da saldare"
+        }])
+        
+        if df.empty:
+            df = nuova_p
+        else:
+            df = pd.concat([df, nuova_p], ignore_index=True)
+            
+        df.to_csv(FILE_PRENOTAZIONI, index=False)
+        backup_istantaneo_telegram(f"Prenotazione Rapida Mappa: {nome_cliente}")
+        st.session_state[widget_key] = "" # Azzera la casellina
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
-
-# ESEGUE IL CONTROLLO DEL BACKUP AUTOMATICO
-controllo_backup_automatico()
 
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
 
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
 
-# --- 💼 SALDO CLIENTI ABITUALI (PAGAMENTO A FINE MESE/PERIODO) ---
+# --- 💼 SALDO CLIENTI ABITUALI ---
 with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di fine periodo)", expanded=False):
     st.info("Usa questa sezione per far pagare in un colpo solo tutte le giornate accumulate da un cliente.")
     
@@ -373,6 +387,7 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                         df_pren.loc[idx, 'Stato'] = "Pres_Pagato"
                         
                 df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+                backup_istantaneo_telegram(f"Saldo registrato per {cliente_sel}")
                 st.success(f"Perfetto! Tutte le {len(indici)} postazioni di {cliente_sel} sono state saldate e aggiornate a 'Presente e Pagato'.")
                 st.rerun()
 
@@ -417,7 +432,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                             elif sto in ["Attesa", "Confermato"]:
                                 edited_df.loc[idx, 'Stato'] = "Pagato"
 
-                        # CONTROLLO ANTI-SOVRAPPOSIZIONE
                         stato_finale = edited_df.loc[idx, 'Stato']
                         d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
                         fila = edited_df.loc[idx, 'Fila']
@@ -439,6 +453,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                         edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
                         df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
                         df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+                        backup_istantaneo_telegram("Modifiche salvate da Ricerca")
                         st.success("✅ Modifiche salvate con successo nel database!")
                         st.rerun()
             else:
@@ -479,7 +494,8 @@ if len(date_selezionate) > 0:
         st.sidebar.error("❌ Tutto esaurito in questa fila!")
 
 st.sidebar.subheader("2. Completa Prenotazione")
-with st.sidebar.form("form_prenotazione"):
+# LA FUNZIONE clear_on_submit=True AZZERA IN AUTOMATICO TUTTO IL FORM DOPO IL SALVATAGGIO
+with st.sidebar.form("form_prenotazione", clear_on_submit=True):
     col_q, col_omb = st.columns(2)
     with col_q:
         quantita_postazioni = st.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
@@ -588,31 +604,31 @@ if submit:
                         else:
                             df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-            st.sidebar.success("✅ Salvataggio completato!")
+            backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
+            st.sidebar.success("✅ Salvataggio completato! I campi si sono azzerati per la prossima prenotazione.")
             st.rerun()
     else:
         st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente.")
 
-# --- 💾 SISTEMA SALVAVITA (BACKUP) ---
+# --- 💾 SISTEMA SALVAVITA (BACKUP MANUALE) ---
 st.sidebar.markdown("---")
-st.sidebar.subheader("💾 Salvataggio Sicuro (Backup)")
-st.sidebar.info("Scarica il database ogni sera per non perdere mai i dati in caso di riavvio del server!")
+st.sidebar.subheader("💾 Backup Locale")
 
 if not df_pren.empty:
     df_backup = df_pren.copy()
     df_backup['Data'] = pd.to_datetime(df_backup['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
     csv_backup = df_backup.to_csv(index=False, sep=';').encode('utf-8')
     st.sidebar.download_button(
-        label="⬇️ Scarica Database Prenotazioni",
+        label="⬇️ Scarica su Telefono/PC",
         data=csv_backup,
         file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv",
         mime="text/csv",
         type="primary"
     )
 
-file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup precedente", type=["csv"])
+file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup", type=["csv"])
 if file_caricato is not None:
-    if st.sidebar.button("⚠️ Conferma Ripristino Dati"):
+    if st.sidebar.button("⚠️ Conferma Ripristino"):
         try:
             df_ripristino = pd.read_csv(file_caricato, sep=None, engine='python')
             df_ripristino['Data'] = pd.to_datetime(df_ripristino['Data'], format='%d-%m-%Y', errors='coerce').fillna(pd.to_datetime(df_ripristino['Data'], errors='coerce')).dt.strftime('%Y-%m-%d')
@@ -698,7 +714,6 @@ else:
         df_range = pd.DataFrame()
 
     if giorni_totali_vis == 1:
-        # VISTA SINGOLA DATA (RAGGRUPPAMENTO LOGICO, ETICHETTA FISICA)
         data_formattata_ita = f"{data_inizio_vis.day} {MESI_ITA[data_inizio_vis.month]} {data_inizio_vis.year}"
         
         st.header(f"📅 Planning del {data_formattata_ita}")
@@ -728,9 +743,10 @@ else:
             nome_c = ultimo_record.get('Nome', "")
             sconto_applicato = float(ultimo_record.get('Sconto', 0.0))
             
+            # PRENDE L'INIZIALE DELL'OPERATORE
             operatore_val = str(ultimo_record.get('Operatore', ""))
-            nome_op = operatore_val.split()[0] if operatore_val and operatore_val != "nan" else ""
-            badge_operatore = f" ✍️ {nome_op}" if nome_op else ""
+            nome_op = operatore_val.split()[0] if operatore_val and str(operatore_val).lower() != "nan" else ""
+            badge_operatore = f" ✍️ {nome_op[0].upper()}" if nome_op else ""
             
             incassato_val = str(ultimo_record.get('Incassato_da', ""))
             nome_incass = incassato_val.split()[0] if incassato_val and incassato_val not in ["nan", "Da", "Da saldare"] else ""
@@ -766,7 +782,6 @@ else:
                 numero_omb = i + 1
                 colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx = controlla_posto(numero_omb, nome_fila)
                 
-                # LOGICA ETICHETTE PERSONALIZZATE
                 etichetta = ""
                 if nome_fila == "Prima Fila":
                     if numero_omb in [15, 16]:
@@ -790,6 +805,7 @@ else:
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
                 
                 if row_idx is not None:
+                    # SE E' OCCUPATO: MOSTRA IL MENU A TENDINA PER LE AZIONI
                     widget_key = f"azione_rapida_{row_idx}_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                     if widget_key not in st.session_state:
                         st.session_state[widget_key] = "⚡ Azione"
@@ -804,9 +820,23 @@ else:
                         on_change=applica_azione_rapida,
                         args=(row_idx, widget_key)
                     )
+                else:
+                    # SE E' LIBERO: MOSTRA LO SPAZIO PER INSERIRE IL NOME VELOCEMENTE
+                    widget_key = f"quick_add_{nome_fila}_{numero_omb}_{data_inizio_vis}"
+                    if widget_key not in st.session_state:
+                        st.session_state[widget_key] = ""
+                    
+                    colonne_griglia[i].text_input(
+                        "Prenota",
+                        placeholder="✏️ Nome...",
+                        label_visibility="collapsed",
+                        key=widget_key,
+                        on_change=applica_prenotazione_rapida,
+                        args=(nome_fila, numero_omb, date_range_vis[0], widget_key, input_operatore)
+                    )
 
     else:
-        # VISTA PERIODO CONTINUO (RADAR DISPONIBILITÀ)
+        # VISTA PERIODO CONTINUO
         data_in_ita = data_inizio_vis.strftime("%d/%m")
         data_fin_ita = data_fine_vis.strftime("%d/%m")
         st.header(f"🗓️ Radar Disponibilità Continua ({data_in_ita} - {data_fin_ita})")
@@ -847,7 +877,6 @@ else:
         df_range_edit = df_range[colonne_tabella].copy()
         df_range_edit['Data'] = pd.to_datetime(df_range_edit['Data'], errors='coerce').dt.date
         
-        # ORDINAMENTO LOGICO PER FILA E OMBRELLONE
         df_range_edit['Fila'] = pd.Categorical(df_range_edit['Fila'], categories=list(CAPIENZA_FILE.keys()), ordered=True)
         df_range_edit = df_range_edit.sort_values(by=['Data', 'Fila', 'Ombrellone'])
         df_range_edit['Fila'] = df_range_edit['Fila'].astype(str)
@@ -871,7 +900,6 @@ else:
                     elif sto in ["Attesa", "Confermato"]:
                         edited_range.loc[idx, 'Stato'] = "Pagato"
 
-                # CONTROLLO ANTI-SOVRAPPOSIZIONE
                 stato_finale = edited_range.loc[idx, 'Stato']
                 d_str = pd.to_datetime(edited_range.loc[idx, 'Data']).strftime('%Y-%m-%d')
                 fila = edited_range.loc[idx, 'Fila']
@@ -893,7 +921,8 @@ else:
                 edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
                 df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
                 df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                st.success("✅ Dati aggiornati (lo Stato si è aggiornato in automatico se necessario)!")
+                backup_istantaneo_telegram("Modifiche salvate dalla tabella in basso")
+                st.success("✅ Dati aggiornati!")
                 st.rerun()
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
@@ -916,7 +945,6 @@ else:
         colonne_report = ["Data", "Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
         df_export = df_range[colonne_report].copy()
         
-        # ORDINAMENTO LOGICO PER FILA E OMBRELLONE
         df_export['Fila'] = pd.Categorical(df_export['Fila'], categories=list(CAPIENZA_FILE.keys()), ordered=True)
         df_export = df_export.sort_values(by=["Data", "Fila", "Ombrellone"])
         df_export['Fila'] = df_export['Fila'].astype(str)
