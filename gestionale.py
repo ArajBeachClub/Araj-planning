@@ -301,9 +301,23 @@ def applica_azione_rapida(idx, widget_key):
             backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
 
-def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore):
-    nome_cliente = st.session_state[widget_key].strip()
-    if nome_cliente:
+def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_default):
+    raw_input = st.session_state[widget_key].strip()
+    if raw_input:
+        nome_cliente = raw_input
+        operatore_finale = operatore_default
+        
+        # TRUCCHETTO NINJA: SE C'È IL TRATTINO, CAMBIA L'OPERATORE
+        if "-" in raw_input:
+            parti = raw_input.split("-")
+            nome_cliente = parti[0].strip()
+            iniziale = parti[-1].strip().upper()
+            
+            for op in OPERATORI_SPIAGGIA:
+                if op.upper().startswith(iniziale):
+                    operatore_finale = op
+                    break
+        
         df = carica_prenotazioni()
         data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
         prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
@@ -313,7 +327,7 @@ def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore):
             "Nome": nome_cliente, "Telefono": "", "Stato": "Presente",
             "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
             "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
-            "Note": "", "Operatore": operatore, "Incassato_da": "Da saldare"
+            "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
         }])
         
         if df.empty:
@@ -328,6 +342,17 @@ def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore):
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
+
+# --- RICONOSCIMENTO AUTOMATICO OPERATORE ---
+op_param = st.query_params.get("op", "") if hasattr(st, "query_params") else ""
+idx_op = 0
+for i, op in enumerate(OPERATORI_SPIAGGIA):
+    if op_param.lower() == op.split()[0].lower():
+        idx_op = i
+        break
+
+operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, index=idx_op)
+st.divider()
 
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
@@ -466,8 +491,6 @@ st.divider()
 # --- BARRA LATERALE ---
 st.sidebar.header("📝 Gestione Prenotazioni")
 
-input_operatore = st.sidebar.selectbox("👤 Chi sta registrando la prenotazione?", OPERATORI_SPIAGGIA)
-
 st.sidebar.subheader("1. Scegli Date e Fila")
 date_selezionate = st.sidebar.date_input("Intervallo Date (Arrivo e Partenza)", [], format="DD/MM/YYYY")
 input_fila = st.sidebar.selectbox("Fila", list(CAPIENZA_FILE.keys()))
@@ -494,7 +517,6 @@ if len(date_selezionate) > 0:
         st.sidebar.error("❌ Tutto esaurito in questa fila!")
 
 st.sidebar.subheader("2. Completa Prenotazione")
-# LA FUNZIONE clear_on_submit=True AZZERA IN AUTOMATICO TUTTO IL FORM DOPO IL SALVATAGGIO
 with st.sidebar.form("form_prenotazione", clear_on_submit=True):
     col_q, col_omb = st.columns(2)
     with col_q:
@@ -522,7 +544,9 @@ with st.sidebar.form("form_prenotazione", clear_on_submit=True):
     input_note = st.text_input("📝 Note / Memo (es. Ospite, Omaggio, Cagnolino)").strip()
     
     st.markdown("---")
-    input_stato = st.selectbox("Stato Postazione", list(STATI_MAP.keys()))
+    
+    input_stato = st.selectbox("Stato Postazione", list(STATI_MAP.keys()), index=1)
+    
     input_incassato = st.selectbox("💰 Pagamento incassato da:", OPZIONI_INCASSO, help="Seleziona chi ha preso i soldi se il cliente ha già pagato")
     
     prezzo_consigliato_totale = 0.0
@@ -597,7 +621,7 @@ if submit:
                             "Nome": input_nome, "Telefono": input_telefono, "Stato": stato_pulito,
                             "Prezzo_Giorno": prezzo_finale_unitario, "Sconto": 0.0, "Hotel": str(input_hotel).strip(),
                             "Persone": input_persone, "Durata": input_durata, "Extra": ", ".join(input_extra), 
-                            "Note": input_note, "Operatore": input_operatore, "Incassato_da": input_incassato
+                            "Note": input_note, "Operatore": operatore_attivo, "Incassato_da": input_incassato
                         }])
                         if df_pren.empty:
                             df_pren = nuova_p
@@ -743,7 +767,6 @@ else:
             nome_c = ultimo_record.get('Nome', "")
             sconto_applicato = float(ultimo_record.get('Sconto', 0.0))
             
-            # PRENDE L'INIZIALE DELL'OPERATORE
             operatore_val = str(ultimo_record.get('Operatore', ""))
             nome_op = operatore_val.split()[0] if operatore_val and str(operatore_val).lower() != "nan" else ""
             badge_operatore = f" ✍️ {nome_op[0].upper()}" if nome_op else ""
@@ -805,7 +828,6 @@ else:
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
                 
                 if row_idx is not None:
-                    # SE E' OCCUPATO: MOSTRA IL MENU A TENDINA PER LE AZIONI
                     widget_key = f"azione_rapida_{row_idx}_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                     if widget_key not in st.session_state:
                         st.session_state[widget_key] = "⚡ Azione"
@@ -821,22 +843,20 @@ else:
                         args=(row_idx, widget_key)
                     )
                 else:
-                    # SE E' LIBERO: MOSTRA LO SPAZIO PER INSERIRE IL NOME VELOCEMENTE
                     widget_key = f"quick_add_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                     if widget_key not in st.session_state:
                         st.session_state[widget_key] = ""
                     
                     colonne_griglia[i].text_input(
                         "Prenota",
-                        placeholder="✏️ Nome...",
+                        placeholder="✏️ Nome (es. Marco - R)",
                         label_visibility="collapsed",
                         key=widget_key,
                         on_change=applica_prenotazione_rapida,
-                        args=(nome_fila, numero_omb, date_range_vis[0], widget_key, input_operatore)
+                        args=(nome_fila, numero_omb, date_range_vis[0], widget_key, operatore_attivo)
                     )
 
     else:
-        # VISTA PERIODO CONTINUO
         data_in_ita = data_inizio_vis.strftime("%d/%m")
         data_fin_ita = data_fine_vis.strftime("%d/%m")
         st.header(f"🗓️ Radar Disponibilità Continua ({data_in_ita} - {data_fin_ita})")
