@@ -97,7 +97,7 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE, STAGIONI E NUOVA MAPPA 🏖️
+# ⚙️ CONFIGURAZIONE TARIFFE E STAGIONI
 # ==========================================
 
 CAPIENZA_FILE = {
@@ -487,7 +487,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
 
 st.divider()
 
-# --- BARRA LATERALE ---
+# --- BARRA LATERALE (SENZA IL FORM CHE CREA PROBLEMI) ---
 st.sidebar.header("📝 Gestione Prenotazioni")
 
 st.sidebar.subheader("1. Scegli Date e Fila")
@@ -516,49 +516,54 @@ if len(date_selezionate) > 0:
         st.sidebar.error("❌ Tutto esaurito in questa fila!")
 
 st.sidebar.subheader("2. Completa Prenotazione")
-with st.sidebar.form("form_prenotazione", clear_on_submit=True):
-    col_q, col_omb = st.columns(2)
-    with col_q:
-        quantita_postazioni = st.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
+
+col_q, col_omb = st.sidebar.columns(2)
+with col_q:
+    quantita_postazioni = st.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
+
+max_start = max_ombrelloni_riga - quantita_postazioni + 1
+with col_omb:
+    opzioni_ombrelloni = list(range(1, max(2, max_start + 1)))
+    input_ombrellone = st.selectbox(f"N° Ombrellone Iniziale", opzioni_ombrelloni, index=0)
     
-    max_start = max_ombrelloni_riga - quantita_postazioni + 1
-    with col_omb:
-        opzioni_ombrelloni = list(range(1, max(2, max_start + 1)))
-        input_ombrellone = st.selectbox(f"N° Ombrellone Iniziale", opzioni_ombrelloni, index=0)
-        
-    st.markdown("---")
+st.sidebar.markdown("---")
+
+# Inizializzo lo stato per poter cancellare i testi dopo il salvataggio
+if 'form_nome' not in st.session_state: st.session_state['form_nome'] = ""
+if 'form_tel' not in st.session_state: st.session_state['form_tel'] = ""
+if 'form_hotel' not in st.session_state: st.session_state['form_hotel'] = ""
+if 'form_note' not in st.session_state: st.session_state['form_note'] = ""
+
+input_nome = st.sidebar.text_input("Nome Cliente (Obbligatorio)", key="form_nome").strip()
+input_telefono = st.sidebar.text_input("Telefono Cliente (Opzionale)", key="form_tel").strip()
+input_hotel = st.sidebar.text_input("Nome Hotel (Opzionale)", key="form_hotel").strip()
+
+st.sidebar.markdown("---")
+col_p, col_d = st.sidebar.columns(2)
+with col_p:
+    input_persone = st.selectbox("Persone (PER OMBRELLONE)", [1, 2, 3, 4, 5, 6], index=1)
+with col_d:
+    input_durata = st.selectbox("Durata", ["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"])
+
+input_extra = st.sidebar.multiselect("🏖️ Risorse Aggiuntive Libere (per postazione)", list(PREZZI_EXTRA.keys()))
+input_note = st.sidebar.text_input("📝 Note / Memo (es. Ospite, Omaggio, Cagnolino)", key="form_note").strip()
+
+st.sidebar.markdown("---")
+
+input_stato = st.sidebar.selectbox("Stato Postazione", list(STATI_MAP.keys()), index=1)
+input_incassato = st.sidebar.selectbox("💰 Pagamento incassato da:", OPZIONI_INCASSO, help="Seleziona chi ha preso i soldi se il cliente ha già pagato")
+
+prezzo_consigliato_totale = 0.0
+if len(date_selezionate) > 0:
+    prezzo_unitario = calcola_prezzo_automatico(date_selezionate[0], input_fila, input_persone, input_durata, input_extra)
+    prezzo_consigliato_totale = prezzo_unitario * quantita_postazioni
     
-    input_nome = st.text_input("Nome Cliente (Obbligatorio)").strip()
-    input_telefono = st.text_input("Telefono Cliente (Opzionale)").strip()
-    input_hotel = st.text_input("Nome Hotel (Opzionale)").strip()
-    
-    st.markdown("---")
-    col_p, col_d = st.columns(2)
-    with col_p:
-        input_persone = st.selectbox("Persone (PER OMBRELLONE)", [1, 2, 3, 4, 5, 6], index=1)
-    with col_d:
-        input_durata = st.selectbox("Durata", ["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"])
-    
-    input_extra = st.multiselect("🏖️ Risorse Aggiuntive Libere (per postazione)", list(PREZZI_EXTRA.keys()))
-    input_note = st.text_input("📝 Note / Memo (es. Ospite, Omaggio, Cagnolino)").strip()
-    
-    st.markdown("---")
-    
-    input_stato = st.selectbox("Stato Postazione", list(STATI_MAP.keys()), index=1)
-    
-    input_incassato = st.selectbox("💰 Pagamento incassato da:", OPZIONI_INCASSO, help="Seleziona chi ha preso i soldi se il cliente ha già pagato")
-    
-    prezzo_consigliato_totale = 0.0
-    if len(date_selezionate) > 0:
-        prezzo_unitario = calcola_prezzo_automatico(date_selezionate[0], input_fila, input_persone, input_durata, input_extra)
-        prezzo_consigliato_totale = prezzo_unitario * quantita_postazioni
-        
-    input_prezzo = st.number_input("Prezzo Giornaliero TOTALE (€)", min_value=0.0, value=float(prezzo_consigliato_totale), step=1.0)
-    
-    st.markdown("---")
-    tipo_salvataggio = st.radio("Se la postazione risulta già occupata:", ["Blocca (Errore)", "Sostituisci (Cancella il vecchio)", "Subentro (Tieni il vecchio per l'incasso)"], help="Scegli Subentro per far pagare due clienti sullo stesso ombrellone nello stesso giorno")
-    
-    submit = st.form_submit_button("Applica Modifiche")
+input_prezzo = st.sidebar.number_input("Prezzo Giornaliero TOTALE (€)", min_value=0.0, value=float(prezzo_consigliato_totale), step=1.0)
+
+st.sidebar.markdown("---")
+tipo_salvataggio = st.sidebar.radio("Se la postazione risulta già occupata:", ["Blocca (Errore)", "Sostituisci (Cancella il vecchio)", "Subentro (Tieni il vecchio per l'incasso)"], help="Scegli Subentro per far pagare due clienti sullo stesso ombrellone nello stesso giorno")
+
+submit = st.sidebar.button("Applica Modifiche", type="primary", use_container_width=True)
 
 if submit:
     if len(date_selezionate) > 0 and input_nome:
@@ -628,7 +633,13 @@ if submit:
                             df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
             backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
-            st.sidebar.success("✅ Salvataggio completato! I campi si sono azzerati per la prossima prenotazione.")
+            st.sidebar.success("✅ Salvataggio completato! I campi di testo si sono azzerati per la prossima prenotazione.")
+            
+            # Svuota solo i campi di testo dopo il salvataggio
+            st.session_state['form_nome'] = ""
+            st.session_state['form_tel'] = ""
+            st.session_state['form_hotel'] = ""
+            st.session_state['form_note'] = ""
             st.rerun()
     else:
         st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente.")
