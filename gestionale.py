@@ -113,7 +113,8 @@ CAPIENZA_FILE = {
 STAGIONI_DATE = {
     "Media 1": [(date(2026, 5, 30), date(2026, 6, 12))],
     "Media 2": [(date(2026, 6, 13), date(2026, 6, 19))],
-    "Alta A": [(date(2026, 6, 20), date(2026, 7, 3))],
+    "Alta A1": [(date(2026, 6, 20), date(2026, 6, 25))],
+    "Alta A2": [(date(2026, 6, 26), date(2026, 7, 3))],
     "Alta B": [(date(2026, 7, 4), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
     "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 8, 24), date(2026, 8, 31))],
     "Peak Season": [(date(2026, 8, 1), date(2026, 8, 23))]
@@ -140,13 +141,22 @@ TARIFFE = {
         "Sesta Fila (Altre)": {"Feriale": [27, 4], "Festivo": [29, 5]},
         "Spiaggia Libera / Esterna": {"Feriale": [24, 0], "Festivo": [30, 0]}
     },
-    "Alta A": {
+    "Alta A1": {
         "Prima Fila": {"Feriale": [38, 8], "Festivo": [40, 10]},
         "Seconda Fila": {"Feriale": [36, 7], "Festivo": [38, 8]},
         "Terza Fila": {"Feriale": [36, 7], "Festivo": [38, 8]},
         "Quarta Fila": {"Feriale": [34, 6], "Festivo": [36, 7]},
         "Quinta Fila": {"Feriale": [34, 6], "Festivo": [36, 7]},
         "Sesta Fila (Altre)": {"Feriale": [32, 5], "Festivo": [34, 6]},
+        "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
+    },
+    "Alta A2": {
+        "Prima Fila": {"Feriale": [38, 8], "Festivo": [42, 10]},
+        "Seconda Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
+        "Terza Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
+        "Quarta Fila": {"Feriale": [34, 6], "Festivo": [38, 7]},
+        "Quinta Fila": {"Feriale": [32, 6], "Festivo": [36, 7]},
+        "Sesta Fila (Altre)": {"Feriale": [32, 5], "Festivo": [36, 6]},
         "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
     },
     "Alta B": {
@@ -187,7 +197,6 @@ PREZZI_EXTRA = {
 
 MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
 
-# ORA "Confermato" È IN CIMA ALLA LISTA, QUINDI È IL PREDEFINITO ASSOLUTO
 STATI_MAP = {
     "Confermato (Rosso)": "Confermato",
     "In Attesa (Giallo)": "Attesa",
@@ -284,6 +293,42 @@ def carica_prenotazioni():
     return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
 
 # ==========================================
+# ⚡ FUNZIONE DI ALLINEAMENTO AUTOMATICO PREZZI (WEEK DI GIUGNO)
+# ==========================================
+def forza_aggiornamento_listino_nuovo():
+    """Allinea automaticamente i vecchi prezzi salvati per la settimana dal 13 al 19 giugno."""
+    if os.path.exists(FILE_PRENOTAZIONI):
+        try:
+            df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
+            if not df.empty:
+                df['Data_Obj'] = pd.to_datetime(df['Data'], errors='coerce').dt.date
+                modificato = False
+                
+                # Definiamo i confini della settimana corrente (Media 2)
+                inizio_week = date(2026, 6, 13)
+                fine_week = date(2026, 6, 19)
+                
+                for idx, row in df.iterrows():
+                    current_date = row['Data_Obj']
+                    if not pd.isna(current_date) and inizio_week <= current_date <= fine_week:
+                        # Se il prezzo registrato non corrisponde a quello calcolato dal nuovo listino e non è un ospite gratis
+                        if row['Incassato_da'] != "Ospite (Gratis)":
+                            prezzo_corretto = calcola_prezzo_automatico(current_date, row['Fila'], row['Persone'], row['Durata'], [])
+                            if row['Prezzo_Giorno'] != prezzo_corretto and row['Sconto'] == 0.0:
+                                df.loc[idx, 'Prezzo_Giorno'] = prezzo_corretto
+                                modificato = True
+                                
+                if modificato:
+                    df = df.drop(columns=['Data_Obj'], errors='ignore')
+                    df.to_csv(FILE_PRENOTAZIONI, index=False)
+                    backup_istantaneo_telegram("Allineamento automatico tariffe week di giugno")
+        except Exception:
+            pass
+
+# Allinea subito i vecchi prezzi salvati prima di caricare la pagina
+forza_aggiornamento_listino_nuovo()
+
+# ==========================================
 # ⚡ AZIONI RAPIDE DALLA MAPPA VISIVA
 # ==========================================
 def applica_azione_rapida(idx, widget_key):
@@ -324,7 +369,7 @@ def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_defau
         
         nuova_p = pd.DataFrame([{
             "Data": data_str, "Fila": fila, "Ombrellone": omb,
-            "Nome": nome_cliente, "Telefono": "", "Stato": "Presente",
+            "Nome": nome_cliente, "Telefono": "", "Stato": "Confermato",
             "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
             "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
             "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
@@ -351,7 +396,7 @@ for i, op in enumerate(OPERATORI_SPIAGGIA):
         idx_op = i
         break
 
-operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, index=idx_op)
+operatore_attivo = st.selectbox("👤 Operatore Active (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, index=idx_op)
 st.divider()
 
 df_clienti = carica_clienti()
@@ -482,7 +527,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                         st.success("✅ Modifiche salvate con successo nel database!")
                         st.rerun()
             else:
-                st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
+                st.warning(f"Nessuna prenotazione trovato per '{ricerca}'.")
         else:
             st.info("Nessuna prenotazione presente nel sistema al momento.")
 
