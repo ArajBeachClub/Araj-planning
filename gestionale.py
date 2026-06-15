@@ -155,6 +155,7 @@ TARIFFE = {
         "Seconda Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
         "Terza Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
         "Quarta Fila": {"Feriale": [34, 6], "Festivo": [38, 7]},
+        "Quinta Fila": {"F22, 6], "Festivo": [36, 7]},
         "Quinta Fila": {"Feriale": [32, 6], "Festivo": [36, 7]},
         "Sesta Fila (Altre)": {"Feriale": [32, 5], "Festivo": [36, 6]},
         "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
@@ -292,11 +293,7 @@ def carica_prenotazioni():
             
     return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
 
-# ==========================================
-# ⚡ FUNZIONE DI ALLINEAMENTO AUTOMATICO PREZZI (WEEK DI GIUGNO)
-# ==========================================
 def forza_aggiornamento_listino_nuovo():
-    """Allinea automaticamente i vecchi prezzi salvati per la settimana dal 13 al 19 giugno."""
     if os.path.exists(FILE_PRENOTAZIONI):
         try:
             df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
@@ -304,14 +301,12 @@ def forza_aggiornamento_listino_nuovo():
                 df['Data_Obj'] = pd.to_datetime(df['Data'], errors='coerce').dt.date
                 modificato = False
                 
-                # Definiamo i confini della settimana corrente (Media 2)
                 inizio_week = date(2026, 6, 13)
                 fine_week = date(2026, 6, 19)
                 
                 for idx, row in df.iterrows():
                     current_date = row['Data_Obj']
                     if not pd.isna(current_date) and inizio_week <= current_date <= fine_week:
-                        # Se il prezzo registrato non corrisponde a quello calcolato dal nuovo listino e non è un ospite gratis
                         if row['Incassato_da'] != "Ospite (Gratis)":
                             prezzo_corretto = calcola_prezzo_automatico(current_date, row['Fila'], row['Persone'], row['Durata'], [])
                             if row['Prezzo_Giorno'] != prezzo_corretto and row['Sconto'] == 0.0:
@@ -325,7 +320,6 @@ def forza_aggiornamento_listino_nuovo():
         except Exception:
             pass
 
-# Allinea subito i vecchi prezzi salvati prima di caricare la pagina
 forza_aggiornamento_listino_nuovo()
 
 # ==========================================
@@ -350,6 +344,13 @@ def applica_azione_rapida(idx, widget_key):
 def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
     if raw_input:
+        # CONTROLLO OBBLIGATORIO NOME E COGNOME PER LA PRENOTAZIONE RAPIDA
+        parole = raw_input.split("-")[0].strip().split()
+        if len(parole) < 2:
+            st.error("🚨 ERRORE: Inserisci sia il NOME che il COGNOME del cliente!")
+            return
+            
+        st.warning("⚠️ NOTA: Per salvare il numero di telefono obbligatorio, usa il modulo di sinistra. La mappa rapida serve solo per i presenti al volo.")
         nome_cliente = raw_input
         operatore_finale = operatore_default
         
@@ -369,7 +370,7 @@ def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_defau
         
         nuova_p = pd.DataFrame([{
             "Data": data_str, "Fila": fila, "Ombrellone": omb,
-            "Nome": nome_cliente, "Telefono": "", "Stato": "Confermato",
+            "Nome": nome_cliente, "Telefono": "Mappa Rapida", "Stato": "Confermato",
             "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
             "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
             "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
@@ -396,7 +397,7 @@ for i, op in enumerate(OPERATORI_SPIAGGIA):
         idx_op = i
         break
 
-operatore_attivo = st.selectbox("👤 Operatore Active (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, index=idx_op)
+operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, index=idx_op)
 st.divider()
 
 df_clienti = carica_clienti()
@@ -527,7 +528,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                         st.success("✅ Modifiche salvate con successo nel database!")
                         st.rerun()
             else:
-                st.warning(f"Nessuna prenotazione trovato per '{ricerca}'.")
+                st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
         else:
             st.info("Nessuna prenotazione presente nel sistema al momento.")
 
@@ -578,8 +579,8 @@ if 'reset_form' not in st.session_state:
     st.session_state['reset_form'] = 0
 rk = st.session_state['reset_form']
 
-input_nome = st.sidebar.text_input("Nome Cliente (Obbligatorio)", key=f"form_nome_{rk}").strip()
-input_telefono = st.sidebar.text_input("Telefono Cliente (Opzionale)", key=f"form_tel_{rk}").strip()
+input_nome = st.sidebar.text_input("Nome e Cognome Cliente (Obbligatori)", key=f"form_nome_{rk}").strip()
+input_telefono = st.sidebar.text_input("Telefono Cliente (Obbligatorio)", key=f"form_tel_{rk}").strip()
 input_hotel = st.sidebar.text_input("Nome Hotel (Opzionale)", key=f"form_hotel_{rk}").strip()
 
 st.sidebar.markdown("---")
@@ -610,7 +611,17 @@ tipo_salvataggio = st.sidebar.radio("Se la postazione risulta già occupata:", [
 submit = st.sidebar.button("Applica Modifiche", type="primary", use_container_width=True)
 
 if submit:
-    if len(date_selezionate) > 0 and input_nome:
+    # 🚨 BLOCCO 1: CONTROLLO DEI CAMPI OBBLIGATORI (SENZA FARE RESET)
+    if not len(date_selezionate) > 0:
+        st.sidebar.error("⚠️ Seleziona le date della prenotazione.")
+    elif not input_nome:
+        st.sidebar.error("⚠️ Il campo Nome e Cognome è obbligatorio!")
+    elif len(input_nome.split()) < 2:
+        st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME del cliente!")
+    elif not input_telefono:
+        st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per salvare!")
+    else:
+        # Se i controlli passano, esegue il salvataggio normalmente
         data_inizio = date_selezionate[0]
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
         giorni_totali = (data_fine - data_inizio).days + 1
@@ -631,22 +642,21 @@ if submit:
                 d_ita = f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d)==10 else d
                 st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
         else:
-            if input_telefono:
-                tel_norm = normalizza_tel(input_telefono)
-                if not df_clienti.empty:
-                    df_clienti['Tel_Norm'] = df_clienti['Telefono'].apply(normalizza_tel)
-                    if tel_norm in df_clienti['Tel_Norm'].values:
-                        idx = df_clienti[df_clienti['Tel_Norm'] == tel_norm].index
-                        df_clienti.loc[idx, 'Nome'] = input_nome
-                        df_clienti.loc[idx, 'Telefono'] = input_telefono
-                    else:
-                        nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
-                        df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
-                    df_clienti = df_clienti.drop(columns=['Tel_Norm'], errors='ignore')
+            tel_norm = normalizza_tel(input_telefono)
+            if not df_clienti.empty:
+                df_clienti['Tel_Norm'] = df_clienti['Telefono'].apply(normalizza_tel)
+                if tel_norm in df_clienti['Tel_Norm'].values:
+                    idx = df_clienti[df_clienti['Tel_Norm'] == tel_norm].index
+                    df_clienti.loc[idx, 'Nome'] = input_nome
+                    df_clienti.loc[idx, 'Telefono'] = input_telefono
                 else:
                     nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
                     df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
-                df_clienti.to_csv(FILE_CLIENTI, index=False)
+                df_clienti = df_clienti.drop(columns=['Tel_Norm'], errors='ignore')
+            else:
+                nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
+                df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
+            df_clienti.to_csv(FILE_CLIENTI, index=False)
                 
             for i in range(giorni_totali):
                 giorno_corrente_obj = data_inizio + timedelta(days=i)
@@ -679,10 +689,9 @@ if submit:
             backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
             st.sidebar.success("✅ Salvataggio completato! I campi di testo si sono azzerati per la prossima prenotazione.")
             
+            # IL RESET SCATTA SOLO QUI (A SALVATAGGIO RIUSCITO)
             st.session_state['reset_form'] += 1
             st.rerun()
-    else:
-        st.sidebar.error("⚠️ Inserisci Data e NOME del Cliente.")
 
 # --- 💾 SISTEMA SALVAVITA (BACKUP MANUALE) ---
 st.sidebar.markdown("---")
@@ -897,7 +906,7 @@ else:
                     
                     colonne_griglia[i].text_input(
                         "Prenota",
-                        placeholder="✏️ Nome (es. Marco - R)",
+                        placeholder="✏️ Nome e Cognome...",
                         label_visibility="collapsed",
                         key=widget_key,
                         on_change=applica_prenotazione_rapida,
