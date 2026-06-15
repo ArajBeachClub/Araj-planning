@@ -343,12 +343,6 @@ def applica_azione_rapida(idx, widget_key):
 def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
     if raw_input:
-        parole = raw_input.split("-")[0].strip().split()
-        if len(parole) < 2:
-            st.error("🚨 ERRORE: Inserisci sia il NOME che il COGNOME del cliente!")
-            return
-            
-        st.warning("⚠️ NOTA: Per salvare il numero di telefono obbligatorio, usa il modulo di sinistra. La mappa rapida serve solo per i presenti al volo.")
         nome_cliente = raw_input
         operatore_finale = operatore_default
         
@@ -368,7 +362,7 @@ def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_defau
         
         nuova_p = pd.DataFrame([{
             "Data": data_str, "Fila": fila, "Ombrellone": omb,
-            "Nome": nome_cliente, "Telefono": "Mappa Rapida", "Stato": "Confermato",
+            "Nome": nome_cliente, "Telefono": "", "Stato": "Confermato",
             "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
             "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
             "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
