@@ -155,7 +155,6 @@ TARIFFE = {
         "Seconda Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
         "Terza Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
         "Quarta Fila": {"Feriale": [34, 6], "Festivo": [38, 7]},
-        "Quinta Fila": {"F22, 6], "Festivo": [36, 7]},
         "Quinta Fila": {"Feriale": [32, 6], "Festivo": [36, 7]},
         "Sesta Fila (Altre)": {"Feriale": [32, 5], "Festivo": [36, 6]},
         "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
@@ -344,7 +343,6 @@ def applica_azione_rapida(idx, widget_key):
 def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
     if raw_input:
-        # CONTROLLO OBBLIGATORIO NOME E COGNOME PER LA PRENOTAZIONE RAPIDA
         parole = raw_input.split("-")[0].strip().split()
         if len(parole) < 2:
             st.error("🚨 ERRORE: Inserisci sia il NOME che il COGNOME del cliente!")
@@ -611,7 +609,6 @@ tipo_salvataggio = st.sidebar.radio("Se la postazione risulta già occupata:", [
 submit = st.sidebar.button("Applica Modifiche", type="primary", use_container_width=True)
 
 if submit:
-    # 🚨 BLOCCO 1: CONTROLLO DEI CAMPI OBBLIGATORI (SENZA FARE RESET)
     if not len(date_selezionate) > 0:
         st.sidebar.error("⚠️ Seleziona le date della prenotazione.")
     elif not input_nome:
@@ -621,7 +618,6 @@ if submit:
     elif not input_telefono:
         st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per salvare!")
     else:
-        # Se i controlli passano, esegue il salvataggio normalmente
         data_inizio = date_selezionate[0]
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
         giorni_totali = (data_fine - data_inizio).days + 1
@@ -689,7 +685,6 @@ if submit:
             backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
             st.sidebar.success("✅ Salvataggio completato! I campi di testo si sono azzerati per la prossima prenotazione.")
             
-            # IL RESET SCATTA SOLO QUI (A SALVATAGGIO RIUSCITO)
             st.session_state['reset_form'] += 1
             st.rerun()
 
@@ -906,7 +901,7 @@ else:
                     
                     colonne_griglia[i].text_input(
                         "Prenota",
-                        placeholder="✏️ Nome e Cognome...",
+                        placeholder="✏️ Nome (es. Marco - R)",
                         label_visibility="collapsed",
                         key=widget_key,
                         on_change=applica_prenotazione_rapida,
