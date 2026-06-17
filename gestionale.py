@@ -571,9 +571,9 @@ if 'reset_form' not in st.session_state:
     st.session_state['reset_form'] = 0
 rk = st.session_state['reset_form']
 
-input_nome = st.sidebar.text_input("Nome e Cognome Cliente (Obbligatori)", key=f"form_nome_{rk}").strip()
-input_telefono = st.sidebar.text_input("Telefono Cliente (Obbligatorio)", key=f"form_tel_{rk}").strip()
-input_hotel = st.sidebar.text_input("Nome Hotel (Opzionale)", key=f"form_hotel_{rk}").strip()
+input_nome = st.sidebar.text_input("Nome e Cognome (Obbligatori se non c'è Hotel)", key=f"form_nome_{rk}").strip()
+input_telefono = st.sidebar.text_input("Telefono (Obbligatorio se non c'è Hotel)", key=f"form_tel_{rk}").strip()
+input_hotel = st.sidebar.text_input("🏨 Nome Hotel (Se lo scrivi, annulla i due obblighi sopra)", key=f"form_hotel_{rk}").strip()
 
 st.sidebar.markdown("---")
 col_p, col_d = st.sidebar.columns(2)
@@ -603,14 +603,20 @@ tipo_salvataggio = st.sidebar.radio("Se la postazione risulta già occupata:", [
 submit = st.sidebar.button("Applica Modifiche", type="primary", use_container_width=True)
 
 if submit:
+    is_hotel_booking = bool(input_hotel.strip())
+    
+    # Se è un hotel e non mettono il nome, lo compiliamo noi in automatico per non lasciare il quadratino vuoto
+    if is_hotel_booking and not input_nome:
+        input_nome = f"Ospiti {input_hotel}"
+        
     if not len(date_selezionate) > 0:
         st.sidebar.error("⚠️ Seleziona le date della prenotazione.")
-    elif not input_nome:
-        st.sidebar.error("⚠️ Il campo Nome e Cognome è obbligatorio!")
-    elif len(input_nome.split()) < 2:
-        st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME del cliente!")
-    elif not input_telefono:
-        st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per salvare!")
+    elif not is_hotel_booking and not input_nome:
+        st.sidebar.error("⚠️ Il campo Nome e Cognome è obbligatorio per i privati!")
+    elif not is_hotel_booking and len(input_nome.split()) < 2:
+        st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME del cliente privato!")
+    elif not is_hotel_booking and not input_telefono:
+        st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per i privati!")
     else:
         data_inizio = date_selezionate[0]
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
@@ -632,21 +638,22 @@ if submit:
                 d_ita = f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d)==10 else d
                 st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
         else:
-            tel_norm = normalizza_tel(input_telefono)
-            if not df_clienti.empty:
-                df_clienti['Tel_Norm'] = df_clienti['Telefono'].apply(normalizza_tel)
-                if tel_norm in df_clienti['Tel_Norm'].values:
-                    idx = df_clienti[df_clienti['Tel_Norm'] == tel_norm].index
-                    df_clienti.loc[idx, 'Nome'] = input_nome
-                    df_clienti.loc[idx, 'Telefono'] = input_telefono
+            if input_telefono:
+                tel_norm = normalizza_tel(input_telefono)
+                if not df_clienti.empty:
+                    df_clienti['Tel_Norm'] = df_clienti['Telefono'].apply(normalizza_tel)
+                    if tel_norm in df_clienti['Tel_Norm'].values:
+                        idx = df_clienti[df_clienti['Tel_Norm'] == tel_norm].index
+                        df_clienti.loc[idx, 'Nome'] = input_nome
+                        df_clienti.loc[idx, 'Telefono'] = input_telefono
+                    else:
+                        nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
+                        df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
+                    df_clienti = df_clienti.drop(columns=['Tel_Norm'], errors='ignore')
                 else:
                     nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
                     df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
-                df_clienti = df_clienti.drop(columns=['Tel_Norm'], errors='ignore')
-            else:
-                nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
-                df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
-            df_clienti.to_csv(FILE_CLIENTI, index=False)
+                df_clienti.to_csv(FILE_CLIENTI, index=False)
                 
             for i in range(giorni_totali):
                 giorno_corrente_obj = data_inizio + timedelta(days=i)
