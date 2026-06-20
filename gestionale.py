@@ -97,29 +97,29 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE E STAGIONI
+# ⚙️ CONFIGURAZIONE TARIFFE E STAGIONI AGGIORNATE
 # ==========================================
 
 CAPIENZA_FILE = {
     "Prima Fila": 17,
-    "Seconda Fila": 16,
+    "Seconda Fila": 17,
     "Terza Fila": 10,
-    "Quarta Fila": 8,
-    "Quinta Fila": 6,
-    "Sesta Fila (Altre)": 3,
+    "Quarta Fila": 10,
+    "Quinta Fila": 7,
+    "Sesta Fila (Altre)": 6,
     "Spiaggia Libera / Esterna": 5
 }
 
 STAGIONI_DATE = {
     "Media 1": [(date(2026, 5, 30), date(2026, 6, 12))],
     "Media 2": [(date(2026, 6, 13), date(2026, 6, 19))],
-    "Alta A1": [(date(2026, 6, 20), date(2026, 6, 25))],
-    "Alta A2": [(date(2026, 6, 26), date(2026, 7, 3))],
+    "Alta A": [(date(2026, 6, 20), date(2026, 7, 3))],  # UNIFICATO DAL NUOVO LISTINO
     "Alta B": [(date(2026, 7, 4), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
     "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 8, 24), date(2026, 8, 31))],
     "Peak Season": [(date(2026, 8, 1), date(2026, 8, 23))]
 }
 
+# I fine settimana, i prefestivi e questi giorni specifici scattano come tariffa Festiva
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
 TARIFFE = {
@@ -141,16 +141,7 @@ TARIFFE = {
         "Sesta Fila (Altre)": {"Feriale": [27, 4], "Festivo": [29, 5]},
         "Spiaggia Libera / Esterna": {"Feriale": [24, 0], "Festivo": [30, 0]}
     },
-    "Alta A1": {
-        "Prima Fila": {"Feriale": [38, 8], "Festivo": [40, 10]},
-        "Seconda Fila": {"Feriale": [36, 7], "Festivo": [38, 8]},
-        "Terza Fila": {"Feriale": [36, 7], "Festivo": [38, 8]},
-        "Quarta Fila": {"Feriale": [34, 6], "Festivo": [36, 7]},
-        "Quinta Fila": {"Feriale": [34, 6], "Festivo": [36, 7]},
-        "Sesta Fila (Altre)": {"Feriale": [32, 5], "Festivo": [34, 6]},
-        "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
-    },
-    "Alta A2": {
+    "Alta A": {  # INSERITI I PREZZI ESATTI DA "image_7.png"
         "Prima Fila": {"Feriale": [38, 8], "Festivo": [42, 10]},
         "Seconda Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
         "Terza Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
@@ -292,7 +283,11 @@ def carica_prenotazioni():
             
     return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
 
+# ==========================================
+# ⚡ ALLINEAMENTO AUTOMATICO DEI PERIODI CORRENTI E FUTURI
+# ==========================================
 def forza_aggiornamento_listino_nuovo():
+    """Allinea automaticamente i vecchi prezzi salvati per i periodi fino al 3 luglio."""
     if os.path.exists(FILE_PRENOTAZIONI):
         try:
             df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
@@ -300,12 +295,12 @@ def forza_aggiornamento_listino_nuovo():
                 df['Data_Obj'] = pd.to_datetime(df['Data'], errors='coerce').dt.date
                 modificato = False
                 
-                inizio_week = date(2026, 6, 13)
-                fine_week = date(2026, 6, 19)
+                inizio_check = date(2026, 6, 13)
+                fine_check = date(2026, 7, 3)  # Copre l'intero blocco del nuovo volantino
                 
                 for idx, row in df.iterrows():
                     current_date = row['Data_Obj']
-                    if not pd.isna(current_date) and inizio_week <= current_date <= fine_week:
+                    if not pd.isna(current_date) and inizio_check <= current_date <= fine_check:
                         if row['Incassato_da'] != "Ospite (Gratis)":
                             prezzo_corretto = calcola_prezzo_automatico(current_date, row['Fila'], row['Persone'], row['Durata'], [])
                             if row['Prezzo_Giorno'] != prezzo_corretto and row['Sconto'] == 0.0:
@@ -315,7 +310,7 @@ def forza_aggiornamento_listino_nuovo():
                 if modificato:
                     df = df.drop(columns=['Data_Obj'], errors='ignore')
                     df.to_csv(FILE_PRENOTAZIONI, index=False)
-                    backup_istantaneo_telegram("Allineamento automatico tariffe week di giugno")
+                    backup_istantaneo_telegram("Allineamento automatico tariffe nuove alta stagione")
         except Exception:
             pass
 
@@ -605,7 +600,6 @@ submit = st.sidebar.button("Applica Modifiche", type="primary", use_container_wi
 if submit:
     is_hotel_booking = bool(input_hotel.strip())
     
-    # Se è un hotel e non mettono il nome, lo compiliamo noi in automatico per non lasciare il quadratino vuoto
     if is_hotel_booking and not input_nome:
         input_nome = f"Ospiti {input_hotel}"
         
@@ -860,19 +854,39 @@ else:
                 numero_omb = i + 1
                 colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx = controlla_posto(numero_omb, nome_fila)
                 
+                # --- CALCOLO NUOVE ETICHETTE FISICHE REAL-TIME ---
                 etichetta = ""
                 if nome_fila == "Prima Fila":
-                    if numero_omb in [16, 17]:
+                    if numero_omb <= 6:
+                        etichetta = "1ª Fila"
+                    elif numero_omb <= 15:
                         etichetta = "Fisicamente in 2ª Fila"
                     else:
-                        etichetta = "1ª Fila"
+                        etichetta = "Fisicamente in 3ª Fila"
                 elif nome_fila == "Seconda Fila":
-                    if numero_omb in [15, 16]:
+                    if numero_omb <= 6:
+                        etichetta = "2ª Fila"
+                    elif numero_omb <= 15:
                         etichetta = "Fisicamente in 3ª Fila"
                     else:
-                        etichetta = "2ª Fila"
+                        etichetta = "Fisicamente in 4ª Fila"
                 elif nome_fila == "Terza Fila":
-                    etichetta = "3ª Fila"
+                    if numero_omb <= 6:
+                        etichetta = "3ª Fila"
+                    else:
+                        etichetta = "Fisicamente in 4ª Fila"
+                elif nome_fila == "Quarta Fila":
+                    if numero_omb <= 6:
+                        etichetta = "4ª Fila"
+                    else:
+                        etichetta = "Fisicamente in 5ª Fila"
+                elif nome_fila == "Quinta Fila":
+                    if numero_omb <= 4:
+                        etichetta = "5ª Fila"
+                    else:
+                        etichetta = "Fisicamente in 6ª Fila"
+                elif nome_fila == "Sesta Fila (Altre)":
+                    etichetta = "6ª Fila"
                 else:
                     etichetta = nome_fila
                 
