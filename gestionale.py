@@ -18,6 +18,18 @@ FILE_PRENOTAZIONI = 'prenotazioni.csv'
 FILE_CLIENTI = 'clienti.csv'
 
 # ==========================================
+# INIZIALIZZAZIONE MEMORIA (Per Automazioni)
+# ==========================================
+if 'sb_dates' not in st.session_state: st.session_state['sb_dates'] = []
+if 'sb_fila' not in st.session_state: st.session_state['sb_fila'] = "Prima Fila"
+if 'sb_omb' not in st.session_state: st.session_state['sb_omb'] = 1
+
+if 'msg_tipo' not in st.session_state: st.session_state['msg_tipo'] = "Privato"
+if 'msg_nome' not in st.session_state: st.session_state['msg_nome'] = ""
+if 'msg_tel' not in st.session_state: st.session_state['msg_tel'] = ""
+if 'msg_dates' not in st.session_state: st.session_state['msg_dates'] = []
+
+# ==========================================
 # 👤 TEAM E OPERATORI
 # ==========================================
 OPERATORI_SPIAGGIA = ["Hiba Laawissi", "Rachele Filippin", "Federica Nebuloni", "Matilde Montis", "Eduardo Bustamante", "Alberto Bertolotti"]
@@ -97,7 +109,7 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE E STAGIONI AGGIORNATE
+# ⚙️ CONFIGURAZIONE TARIFFE E NUOVA MAPPA STRUTTURATA 🏖️
 # ==========================================
 
 CAPIENZA_FILE = {
@@ -113,13 +125,12 @@ CAPIENZA_FILE = {
 STAGIONI_DATE = {
     "Media 1": [(date(2026, 5, 30), date(2026, 6, 12))],
     "Media 2": [(date(2026, 6, 13), date(2026, 6, 19))],
-    "Alta A": [(date(2026, 6, 20), date(2026, 7, 3))],  # UNIFICATO DAL NUOVO LISTINO
+    "Alta A": [(date(2026, 6, 20), date(2026, 7, 3))],  
     "Alta B": [(date(2026, 7, 4), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
     "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 8, 24), date(2026, 8, 31))],
     "Peak Season": [(date(2026, 8, 1), date(2026, 8, 23))]
 }
 
-# I fine settimana, i prefestivi e questi giorni specifici scattano come tariffa Festiva
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
 TARIFFE = {
@@ -141,7 +152,7 @@ TARIFFE = {
         "Sesta Fila (Altre)": {"Feriale": [27, 4], "Festivo": [29, 5]},
         "Spiaggia Libera / Esterna": {"Feriale": [24, 0], "Festivo": [30, 0]}
     },
-    "Alta A": {  # INSERITI I PREZZI ESATTI DA "image_7.png"
+    "Alta A": {  
         "Prima Fila": {"Feriale": [38, 8], "Festivo": [42, 10]},
         "Seconda Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
         "Terza Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
@@ -283,11 +294,7 @@ def carica_prenotazioni():
             
     return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
 
-# ==========================================
-# ⚡ ALLINEAMENTO AUTOMATICO DEI PERIODI CORRENTI E FUTURI
-# ==========================================
 def forza_aggiornamento_listino_nuovo():
-    """Allinea automaticamente i vecchi prezzi salvati per i periodi fino al 3 luglio."""
     if os.path.exists(FILE_PRENOTAZIONI):
         try:
             df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
@@ -296,7 +303,7 @@ def forza_aggiornamento_listino_nuovo():
                 modificato = False
                 
                 inizio_check = date(2026, 6, 13)
-                fine_check = date(2026, 7, 3)  # Copre l'intero blocco del nuovo volantino
+                fine_check = date(2026, 7, 3) 
                 
                 for idx, row in df.iterrows():
                     current_date = row['Data_Obj']
@@ -335,12 +342,19 @@ def applica_azione_rapida(idx, widget_key):
             backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
 
-def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_default):
+def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
     if raw_input:
+        # OBBLIGO NOME E COGNOME ANCHE PER I PRESENTI (ALMENO 2 PAROLE)
+        parole = raw_input.split("-")[0].strip().split()
+        if len(parole) < 2:
+            st.error("🚨 ERRORE: Inserisci sia il NOME che il COGNOME del cliente!")
+            return
+            
         nome_cliente = raw_input
         operatore_finale = operatore_default
         
+        # Gestisce il Ninja Trick per cambiare operatore (es. Marco Rossi - R)
         if "-" in raw_input:
             parti = raw_input.split("-")
             nome_cliente = parti[0].strip()
@@ -350,27 +364,45 @@ def applica_prenotazione_rapida(fila, omb, data_str, widget_key, operatore_defau
                 if op.upper().startswith(iniziale):
                     operatore_finale = op
                     break
+                    
+        # Legge il toggle per decidere cosa fare
+        modalita = st.session_state.get('map_mode', "⚡ Salva Subito")
         
-        df = carica_prenotazioni()
-        data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
-        prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
-        
-        nuova_p = pd.DataFrame([{
-            "Data": data_str, "Fila": fila, "Ombrellone": omb,
-            "Nome": nome_cliente, "Telefono": "", "Stato": "Confermato",
-            "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
-            "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
-            "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
-        }])
-        
-        if df.empty:
-            df = nuova_p
-        else:
-            df = pd.concat([df, nuova_p], ignore_index=True)
+        if "Sinistra" in modalita:
+            # ⬅️ PRECOMPILA LA BARRA LATERALE!
+            data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
+            st.session_state['sb_dates'] = (data_obj, data_obj)
+            st.session_state['sb_fila'] = fila
+            st.session_state['sb_omb'] = omb
+            st.session_state['sb_operatore'] = operatore_finale
             
-        df.to_csv(FILE_PRENOTAZIONI, index=False)
-        backup_istantaneo_telegram(f"Prenotazione Rapida Mappa: {nome_cliente}")
-        st.session_state[widget_key] = "" 
+            rk = st.session_state.get('reset_form', 0)
+            st.session_state[f'form_nome_{rk}'] = nome_cliente
+            
+            st.session_state[widget_key] = "" 
+        else:
+            # ⚡ SALVA SUBITO IL CLIENTE PRESENTE IN SPIAGGIA
+            df = carica_prenotazioni()
+            data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
+            prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
+            
+            nuova_p = pd.DataFrame([{
+                "Data": data_str, "Fila": fila, "Ombrellone": omb,
+                "Nome": nome_cliente, "Telefono": "Cliente Presente", "Stato": "Presente",
+                "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
+                "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
+                "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
+            }])
+            
+            if df.empty:
+                df = nuova_p
+            else:
+                df = pd.concat([df, nuova_p], ignore_index=True)
+                
+            df.to_csv(FILE_PRENOTAZIONI, index=False)
+            backup_istantaneo_telegram(f"Prenotazione Rapida Mappa: {nome_cliente}")
+            st.session_state[widget_key] = "" 
+
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 
@@ -384,7 +416,10 @@ for i, op in enumerate(OPERATORI_SPIAGGIA):
         idx_op = i
         break
 
-operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, index=idx_op)
+if 'sb_operatore' not in st.session_state:
+    st.session_state['sb_operatore'] = OPERATORI_SPIAGGIA[idx_op]
+
+operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
 
 df_clienti = carica_clienti()
@@ -525,8 +560,8 @@ st.divider()
 st.sidebar.header("📝 Gestione Prenotazioni")
 
 st.sidebar.subheader("1. Scegli Date e Fila")
-date_selezionate = st.sidebar.date_input("Intervallo Date (Arrivo e Partenza)", [], format="DD/MM/YYYY")
-input_fila = st.sidebar.selectbox("Fila", list(CAPIENZA_FILE.keys()))
+date_selezionate = st.sidebar.date_input("Intervallo Date (Arrivo e Partenza)", key="sb_dates", format="DD/MM/YYYY")
+input_fila = st.sidebar.selectbox("Fila", list(CAPIENZA_FILE.keys()), key="sb_fila")
 max_ombrelloni_riga = CAPIENZA_FILE[input_fila]
 
 ombrelloni_liberi = []
@@ -558,7 +593,9 @@ with col_q:
 max_start = max_ombrelloni_riga - quantita_postazioni + 1
 with col_omb:
     opzioni_ombrelloni = list(range(1, max(2, max_start + 1)))
-    input_ombrellone = st.sidebar.selectbox(f"N° Ombrellone Iniziale", opzioni_ombrelloni, index=0)
+    if st.session_state['sb_omb'] not in opzioni_ombrelloni:
+        st.session_state['sb_omb'] = opzioni_ombrelloni[0]
+    input_ombrellone = st.sidebar.selectbox(f"N° Ombrellone Iniziale", opzioni_ombrelloni, key="sb_omb")
     
 st.sidebar.markdown("---")
 
@@ -678,7 +715,13 @@ if submit:
                             df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
             backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
-            st.sidebar.success("✅ Salvataggio completato! I campi di testo si sono azzerati per la prossima prenotazione.")
+            st.sidebar.success("✅ Salvataggio completato! Il messaggio qui sotto è pronto da inviare.")
+            
+            # PRECOMPILA MESSAGGIO AUTOMATICO
+            st.session_state['msg_tipo'] = "Hotel" if is_hotel_booking else "Privato"
+            st.session_state['msg_nome'] = input_hotel if is_hotel_booking else input_nome
+            st.session_state['msg_tel'] = input_telefono
+            st.session_state['msg_dates'] = date_selezionate
             
             st.session_state['reset_form'] += 1
             st.rerun()
@@ -716,12 +759,14 @@ st.sidebar.markdown("---")
 # --- AREA DEMO E NOTIFICHE ---
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
 
-operatore_msg = st.sidebar.selectbox("👤 Inviato da:", OPERATORI_SPIAGGIA)
-tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal=True)
+operatore_msg = st.sidebar.selectbox("👤 Inviato da:", OPERATORI_SPIAGGIA, index=OPERATORI_SPIAGGIA.index(st.session_state.get('sb_operatore', OPERATORI_SPIAGGIA[0])))
 
-date_wa = st.sidebar.date_input("Date prenotazione (Arrivo e Partenza)", [], format="DD/MM/YYYY")
-nome_wa = st.sidebar.text_input("Nome Cliente / Nome Hotel")
-tel_wa = st.sidebar.text_input("Cellulare (Per WhatsApp)")
+idx_tipo = 1 if st.session_state.get('msg_tipo', 'Privato') == 'Hotel' else 0
+tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal=True, index=idx_tipo, key="radio_dest")
+
+date_wa = st.sidebar.date_input("Date prenotazione (Arrivo e Partenza)", value=st.session_state.get('msg_dates', []), format="DD/MM/YYYY")
+nome_wa = st.sidebar.text_input("Nome Cliente / Nome Hotel", value=st.session_state.get('msg_nome', ""))
+tel_wa = st.sidebar.text_input("Cellulare (Per WhatsApp)", value=st.session_state.get('msg_tel', ""))
 email_cliente = st.sidebar.text_input("Indirizzo Email")
 lingua_scelta = st.sidebar.selectbox("Lingua Messaggio", ["Italiano", "English"])
 
@@ -791,14 +836,20 @@ else:
         
         st.header(f"📅 Planning del {data_formattata_ita}")
         
-        st.markdown("""
-        <div style="text-align: right; margin-bottom: 10px;">
-            <button onclick="window.parent.print(); window.print();" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                🖨️ Stampa Planning (Quadratini)
-            </button>
-            <p style="font-size: 12px; color: gray; margin-top: 5px;">Se il tasto non funziona sul telefono, usa il tasto 'Condividi' in basso ⬆️ e seleziona 'Stampa'.</p>
-        </div>
-        """, unsafe_allow_html=True)
+        col_t1, col_t2 = st.columns([2, 1])
+        with col_t1:
+            st.radio("⚙️ Cosa succede quando scrivi in un quadratino verde?", 
+                     ["⚡ Salva Subito (Clienti in Spiaggia)", "⬅️ Precompila a Sinistra (Nuove Prenotazioni)"], 
+                     horizontal=True, key="map_mode")
+        with col_t2:
+            st.markdown("""
+            <div style="text-align: right; margin-bottom: 10px;">
+                <button onclick="window.parent.print(); window.print();" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
+                    🖨️ Stampa Planning
+                </button>
+            </div>
+            """, unsafe_allow_html=True)
+            
         st.divider()
 
         def controlla_posto(numero_ombrellone, fila):
@@ -846,6 +897,9 @@ else:
                 badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌇 LIBERO POMERIGG.</span><br>"
             
             return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile, ultimo_record.name
+
+        modalita_attuale = st.session_state.get("map_mode", "⚡ Salva Subito")
+        placeholder_txt = "✏️ Nome e Cognome..." if "Salva" in modalita_attuale else "⬅️ Invia a sinistra..."
 
         for nome_fila, max_posti in CAPIENZA_FILE.items():
             st.subheader(nome_fila)
@@ -916,10 +970,10 @@ else:
                     
                     colonne_griglia[i].text_input(
                         "Prenota",
-                        placeholder="✏️ Nome (es. Marco - R)",
+                        placeholder=placeholder_txt,
                         label_visibility="collapsed",
                         key=widget_key,
-                        on_change=applica_prenotazione_rapida,
+                        on_change=gestisci_input_mappa,
                         args=(nome_fila, numero_omb, date_range_vis[0], widget_key, operatore_attivo)
                     )
 
