@@ -109,7 +109,7 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE E MAPPA STRUTTURATA (Senza Spiaggia Libera)
+# ⚙️ CONFIGURAZIONE TARIFFE E MAPPA STRUTTURATA
 # ==========================================
 
 CAPIENZA_FILE = {
@@ -376,13 +376,17 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             
             st.session_state[widget_key] = "" 
         else:
-            # ⚡ SALVA SUBITO IL CLIENTE (Con Telefono Vuoto, Niente più "Cliente Presente")
+            # ⚡ SALVA SUBITO IL CLIENTE
             df = carica_prenotazioni()
             prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
             
+            # AUTOMAZIONE INTELLIGENTE DELLO STATO: 
+            # Se la data è futura diventa "Confermato" (Rosso), se è oggi (o passata) diventa "Presente" (Viola)
+            stato_automatico = "Confermato" if is_future else "Presente"
+            
             nuova_p = pd.DataFrame([{
                 "Data": data_str, "Fila": fila, "Ombrellone": omb,
-                "Nome": nome_cliente, "Telefono": "", "Stato": "Presente",
+                "Nome": nome_cliente, "Telefono": "", "Stato": stato_automatico,
                 "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
                 "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
                 "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
@@ -642,7 +646,6 @@ if submit:
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
         is_future = data_inizio > oggi
         
-        # CONTROLLI RIGIDI SOLO SE E' PER IL FUTURO (O SE MANCA COMPLETAMENTE IL NOME)
         if not is_hotel_booking and not input_nome:
             st.sidebar.error("⚠️ Il campo Nome è obbligatorio per i privati!")
         elif not is_hotel_booking and is_future and len(input_nome.split()) < 2:
