@@ -109,7 +109,7 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE E NUOVA MAPPA STRUTTURATA 🏖️
+# ⚙️ CONFIGURAZIONE TARIFFE E MAPPA STRUTTURATA (Senza Spiaggia Libera)
 # ==========================================
 
 CAPIENZA_FILE = {
@@ -118,8 +118,7 @@ CAPIENZA_FILE = {
     "Terza Fila": 10,
     "Quarta Fila": 10,
     "Quinta Fila": 7,
-    "Sesta Fila (Altre)": 6,
-    "Spiaggia Libera / Esterna": 5
+    "Sesta Fila (Altre)": 6
 }
 
 STAGIONI_DATE = {
@@ -140,8 +139,7 @@ TARIFFE = {
         "Terza Fila": {"Feriale": [28, 6], "Festivo": [31, 8]},
         "Quarta Fila": {"Feriale": [27, 5], "Festivo": [29, 7]},
         "Quinta Fila": {"Feriale": [27, 5], "Festivo": [29, 7]},
-        "Sesta Fila (Altre)": {"Feriale": [26, 4], "Festivo": [27, 5]},
-        "Spiaggia Libera / Esterna": {"Feriale": [24, 0], "Festivo": [30, 0]}
+        "Sesta Fila (Altre)": {"Feriale": [26, 4], "Festivo": [27, 5]}
     },
     "Media 2": {
         "Prima Fila": {"Feriale": [33, 7], "Festivo": [35, 9]},
@@ -149,8 +147,7 @@ TARIFFE = {
         "Terza Fila": {"Feriale": [30, 6], "Festivo": [33, 8]},
         "Quarta Fila": {"Feriale": [28, 5], "Festivo": [30, 7]},
         "Quinta Fila": {"Feriale": [27, 5], "Festivo": [29, 7]},
-        "Sesta Fila (Altre)": {"Feriale": [27, 4], "Festivo": [29, 5]},
-        "Spiaggia Libera / Esterna": {"Feriale": [24, 0], "Festivo": [30, 0]}
+        "Sesta Fila (Altre)": {"Feriale": [27, 4], "Festivo": [29, 5]}
     },
     "Alta A": {  
         "Prima Fila": {"Feriale": [38, 8], "Festivo": [42, 10]},
@@ -158,8 +155,7 @@ TARIFFE = {
         "Terza Fila": {"Feriale": [36, 7], "Festivo": [40, 8]},
         "Quarta Fila": {"Feriale": [34, 6], "Festivo": [38, 7]},
         "Quinta Fila": {"Feriale": [32, 6], "Festivo": [36, 7]},
-        "Sesta Fila (Altre)": {"Feriale": [32, 5], "Festivo": [36, 6]},
-        "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
+        "Sesta Fila (Altre)": {"Feriale": [32, 5], "Festivo": [36, 6]}
     },
     "Alta B": {
         "Prima Fila": {"Feriale": [40, 8], "Festivo": [42, 10]},
@@ -167,8 +163,7 @@ TARIFFE = {
         "Terza Fila": {"Feriale": [38, 7], "Festivo": [40, 8]},
         "Quarta Fila": {"Feriale": [36, 6], "Festivo": [38, 7]},
         "Quinta Fila": {"Feriale": [36, 6], "Festivo": [38, 7]},
-        "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [36, 6]},
-        "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
+        "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [36, 6]}
     },
     "Altissima": {
         "Prima Fila": {"Feriale": [56, 10], "Festivo": [58, 12]},
@@ -176,8 +171,7 @@ TARIFFE = {
         "Terza Fila": {"Feriale": [53, 8], "Festivo": [55, 10]},
         "Quarta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]},
         "Quinta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]},
-        "Sesta Fila (Altre)": {"Feriale": [42, 6], "Festivo": [44, 7]},
-        "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
+        "Sesta Fila (Altre)": {"Feriale": [42, 6], "Festivo": [44, 7]}
     },
     "Peak Season": { 
         "Prima Fila": {"Feriale": [74, 14], "Festivo": [74, 14]},
@@ -185,8 +179,7 @@ TARIFFE = {
         "Terza Fila": {"Feriale": [65, 10], "Festivo": [65, 10]},
         "Quarta Fila": {"Feriale": [60, 9], "Festivo": [60, 9]},
         "Quinta Fila": {"Feriale": [60, 9], "Festivo": [60, 9]},
-        "Sesta Fila (Altre)": {"Feriale": [49, 8], "Festivo": [49, 8]},
-        "Spiaggia Libera / Esterna": {"Feriale": [0, 0], "Festivo": [0, 0]}
+        "Sesta Fila (Altre)": {"Feriale": [49, 8], "Festivo": [49, 8]}
     }
 }
 
@@ -345,16 +338,20 @@ def applica_azione_rapida(idx, widget_key):
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
     if raw_input:
-        # OBBLIGO NOME E COGNOME ANCHE PER I PRESENTI (ALMENO 2 PAROLE)
+        data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
+        oggi = date.today()
+        is_future = data_obj > oggi
+        
+        # CONTROLLO OBBLIGATORIO: Se è per un giorno futuro, servono Nome e Cognome. 
+        # Se è per oggi, basta anche solo il Nome ("Luca")
         parole = raw_input.split("-")[0].strip().split()
-        if len(parole) < 2:
-            st.error("🚨 ERRORE: Inserisci sia il NOME che il COGNOME del cliente!")
+        if is_future and len(parole) < 2:
+            st.error("🚨 ERRORE: Per i GIORNI FUTURI inserisci sia il NOME che il COGNOME del cliente!")
             return
             
         nome_cliente = raw_input
         operatore_finale = operatore_default
         
-        # Gestisce il Ninja Trick per cambiare operatore (es. Marco Rossi - R)
         if "-" in raw_input:
             parti = raw_input.split("-")
             nome_cliente = parti[0].strip()
@@ -365,12 +362,10 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
                     operatore_finale = op
                     break
                     
-        # Legge il toggle per decidere cosa fare
         modalita = st.session_state.get('map_mode', "⚡ Salva Subito")
         
         if "Sinistra" in modalita:
-            # ⬅️ PRECOMPILA LA BARRA LATERALE!
-            data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
+            # ⬅️ PRECOMPILA LA BARRA LATERALE
             st.session_state['sb_dates'] = (data_obj, data_obj)
             st.session_state['sb_fila'] = fila
             st.session_state['sb_omb'] = omb
@@ -381,14 +376,13 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             
             st.session_state[widget_key] = "" 
         else:
-            # ⚡ SALVA SUBITO IL CLIENTE PRESENTE IN SPIAGGIA
+            # ⚡ SALVA SUBITO IL CLIENTE (Con Telefono Vuoto, Niente più "Cliente Presente")
             df = carica_prenotazioni()
-            data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
             prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
             
             nuova_p = pd.DataFrame([{
                 "Data": data_str, "Fila": fila, "Ombrellone": omb,
-                "Nome": nome_cliente, "Telefono": "Cliente Presente", "Stato": "Presente",
+                "Nome": nome_cliente, "Telefono": "", "Stato": "Presente",
                 "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
                 "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
                 "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
@@ -603,8 +597,8 @@ if 'reset_form' not in st.session_state:
     st.session_state['reset_form'] = 0
 rk = st.session_state['reset_form']
 
-input_nome = st.sidebar.text_input("Nome e Cognome (Obbligatori se non c'è Hotel)", key=f"form_nome_{rk}").strip()
-input_telefono = st.sidebar.text_input("Telefono (Obbligatorio se non c'è Hotel)", key=f"form_tel_{rk}").strip()
+input_nome = st.sidebar.text_input("Nome (Cognome obbligatorio per i giorni futuri)", key=f"form_nome_{rk}").strip()
+input_telefono = st.sidebar.text_input("Telefono (Obbligatorio per i giorni futuri)", key=f"form_tel_{rk}").strip()
 input_hotel = st.sidebar.text_input("🏨 Nome Hotel (Se lo scrivi, annulla i due obblighi sopra)", key=f"form_hotel_{rk}").strip()
 
 st.sidebar.markdown("---")
@@ -640,91 +634,96 @@ if submit:
     if is_hotel_booking and not input_nome:
         input_nome = f"Ospiti {input_hotel}"
         
+    oggi = date.today()
     if not len(date_selezionate) > 0:
         st.sidebar.error("⚠️ Seleziona le date della prenotazione.")
-    elif not is_hotel_booking and not input_nome:
-        st.sidebar.error("⚠️ Il campo Nome e Cognome è obbligatorio per i privati!")
-    elif not is_hotel_booking and len(input_nome.split()) < 2:
-        st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME del cliente privato!")
-    elif not is_hotel_booking and not input_telefono:
-        st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per i privati!")
     else:
         data_inizio = date_selezionate[0]
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
-        giorni_totali = (data_fine - data_inizio).days + 1
-        date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
-        ombrelloni_richiesti = [input_ombrellone + j for j in range(quantita_postazioni)]
+        is_future = data_inizio > oggi
         
-        if not df_pren.empty:
-            sovrapposizioni = df_pren[(df_pren['Data'].isin(date_list_str)) & (df_pren['Fila'] == input_fila) & (df_pren['Ombrellone'].isin(ombrelloni_richiesti))]
+        # CONTROLLI RIGIDI SOLO SE E' PER IL FUTURO (O SE MANCA COMPLETAMENTE IL NOME)
+        if not is_hotel_booking and not input_nome:
+            st.sidebar.error("⚠️ Il campo Nome è obbligatorio per i privati!")
+        elif not is_hotel_booking and is_future and len(input_nome.split()) < 2:
+            st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME per le prenotazioni dei giorni futuri!")
+        elif not is_hotel_booking and is_future and not input_telefono:
+            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per le prenotazioni dei giorni futuri!")
         else:
-            sovrapposizioni = pd.DataFrame()
+            giorni_totali = (data_fine - data_inizio).days + 1
+            date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
+            ombrelloni_richiesti = [input_ombrellone + j for j in range(quantita_postazioni)]
             
-        stato_pulito = STATI_MAP[input_stato]
-        
-        if not sovrapposizioni.empty and tipo_salvataggio == "Blocca (Errore)" and stato_pulito != "Libero":
-            st.sidebar.error("🚨 ERRORE: POSTAZIONE GIÀ OCCUPATA!")
-            for _, row_conf in sovrapposizioni.drop_duplicates(subset=['Ombrellone', 'Nome']).iterrows():
-                d = row_conf['Data']
-                d_ita = f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d)==10 else d
-                st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
-        else:
-            if input_telefono:
-                tel_norm = normalizza_tel(input_telefono)
-                if not df_clienti.empty:
-                    df_clienti['Tel_Norm'] = df_clienti['Telefono'].apply(normalizza_tel)
-                    if tel_norm in df_clienti['Tel_Norm'].values:
-                        idx = df_clienti[df_clienti['Tel_Norm'] == tel_norm].index
-                        df_clienti.loc[idx, 'Nome'] = input_nome
-                        df_clienti.loc[idx, 'Telefono'] = input_telefono
+            if not df_pren.empty:
+                sovrapposizioni = df_pren[(df_pren['Data'].isin(date_list_str)) & (df_pren['Fila'] == input_fila) & (df_pren['Ombrellone'].isin(ombrelloni_richiesti))]
+            else:
+                sovrapposizioni = pd.DataFrame()
+                
+            stato_pulito = STATI_MAP[input_stato]
+            
+            if not sovrapposizioni.empty and tipo_salvataggio == "Blocca (Errore)" and stato_pulito != "Libero":
+                st.sidebar.error("🚨 ERRORE: POSTAZIONE GIÀ OCCUPATA!")
+                for _, row_conf in sovrapposizioni.drop_duplicates(subset=['Ombrellone', 'Nome']).iterrows():
+                    d = row_conf['Data']
+                    d_ita = f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d)==10 else d
+                    st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
+            else:
+                if input_telefono:
+                    tel_norm = normalizza_tel(input_telefono)
+                    if not df_clienti.empty:
+                        df_clienti['Tel_Norm'] = df_clienti['Telefono'].apply(normalizza_tel)
+                        if tel_norm in df_clienti['Tel_Norm'].values:
+                            idx = df_clienti[df_clienti['Tel_Norm'] == tel_norm].index
+                            df_clienti.loc[idx, 'Nome'] = input_nome
+                            df_clienti.loc[idx, 'Telefono'] = input_telefono
+                        else:
+                            nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
+                            df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
+                        df_clienti = df_clienti.drop(columns=['Tel_Norm'], errors='ignore')
                     else:
                         nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
                         df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
-                    df_clienti = df_clienti.drop(columns=['Tel_Norm'], errors='ignore')
-                else:
-                    nuovo_c = pd.DataFrame([{"Telefono": input_telefono, "Nome": input_nome}])
-                    df_clienti = pd.concat([df_clienti, nuovo_c], ignore_index=True)
-                df_clienti.to_csv(FILE_CLIENTI, index=False)
-                
-            for i in range(giorni_totali):
-                giorno_corrente_obj = data_inizio + timedelta(days=i)
-                giorno_corrente_str = giorno_corrente_obj.strftime("%Y-%m-%d")
-                prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
-                prezzo_finale_unitario = input_prezzo / quantita_postazioni if input_prezzo != prezzo_consigliato_totale else prezzo_giorno_unitario
-                
-                if input_incassato == "Ospite (Gratis)":
-                    prezzo_finale_unitario = 0.0
-                
-                for j in range(quantita_postazioni):
-                    omb_corrente = input_ombrellone + j
+                    df_clienti.to_csv(FILE_CLIENTI, index=False)
                     
-                    if tipo_salvataggio == "Sostituisci (Cancella il vecchio)" and not df_pren.empty:
-                        df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == omb_corrente) & (df_pren['Fila'] == input_fila))]
+                for i in range(giorni_totali):
+                    giorno_corrente_obj = data_inizio + timedelta(days=i)
+                    giorno_corrente_str = giorno_corrente_obj.strftime("%Y-%m-%d")
+                    prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
+                    prezzo_finale_unitario = input_prezzo / quantita_postazioni if input_prezzo != prezzo_consigliato_totale else prezzo_giorno_unitario
                     
-                    if stato_pulito != "Libero":
-                        nuova_p = pd.DataFrame([{
-                            "Data": giorno_corrente_str, "Fila": input_fila, "Ombrellone": omb_corrente,
-                            "Nome": input_nome, "Telefono": input_telefono, "Stato": stato_pulito,
-                            "Prezzo_Giorno": prezzo_finale_unitario, "Sconto": 0.0, "Hotel": str(input_hotel).strip(),
-                            "Persone": input_persone, "Durata": input_durata, "Extra": ", ".join(input_extra), 
-                            "Note": input_note, "Operatore": operatore_attivo, "Incassato_da": input_incassato
-                        }])
-                        if df_pren.empty:
-                            df_pren = nuova_p
-                        else:
-                            df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
-            df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-            backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
-            st.sidebar.success("✅ Salvataggio completato! Il messaggio qui sotto è pronto da inviare.")
-            
-            # PRECOMPILA MESSAGGIO AUTOMATICO
-            st.session_state['msg_tipo'] = "Hotel" if is_hotel_booking else "Privato"
-            st.session_state['msg_nome'] = input_hotel if is_hotel_booking else input_nome
-            st.session_state['msg_tel'] = input_telefono
-            st.session_state['msg_dates'] = date_selezionate
-            
-            st.session_state['reset_form'] += 1
-            st.rerun()
+                    if input_incassato == "Ospite (Gratis)":
+                        prezzo_finale_unitario = 0.0
+                    
+                    for j in range(quantita_postazioni):
+                        omb_corrente = input_ombrellone + j
+                        
+                        if tipo_salvataggio == "Sostituisci (Cancella il vecchio)" and not df_pren.empty:
+                            df_pren = df_pren[~((df_pren['Data'] == giorno_corrente_str) & (df_pren['Ombrellone'] == omb_corrente) & (df_pren['Fila'] == input_fila))]
+                        
+                        if stato_pulito != "Libero":
+                            nuova_p = pd.DataFrame([{
+                                "Data": giorno_corrente_str, "Fila": input_fila, "Ombrellone": omb_corrente,
+                                "Nome": input_nome, "Telefono": input_telefono, "Stato": stato_pulito,
+                                "Prezzo_Giorno": prezzo_finale_unitario, "Sconto": 0.0, "Hotel": str(input_hotel).strip(),
+                                "Persone": input_persone, "Durata": input_durata, "Extra": ", ".join(input_extra), 
+                                "Note": input_note, "Operatore": operatore_attivo, "Incassato_da": input_incassato
+                            }])
+                            if df_pren.empty:
+                                df_pren = nuova_p
+                            else:
+                                df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
+                df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+                backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {input_nome}")
+                st.sidebar.success("✅ Salvataggio completato! Il messaggio qui sotto è pronto da inviare.")
+                
+                # PRECOMPILA MESSAGGIO AUTOMATICO
+                st.session_state['msg_tipo'] = "Hotel" if is_hotel_booking else "Privato"
+                st.session_state['msg_nome'] = input_hotel if is_hotel_booking else input_nome
+                st.session_state['msg_tel'] = input_telefono
+                st.session_state['msg_dates'] = date_selezionate
+                
+                st.session_state['reset_form'] += 1
+                st.rerun()
 
 # --- 💾 SISTEMA SALVAVITA (BACKUP MANUALE) ---
 st.sidebar.markdown("---")
@@ -899,7 +898,7 @@ else:
             return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile, ultimo_record.name
 
         modalita_attuale = st.session_state.get("map_mode", "⚡ Salva Subito")
-        placeholder_txt = "✏️ Nome e Cognome..." if "Salva" in modalita_attuale else "⬅️ Invia a sinistra..."
+        placeholder_txt = "✏️ Nome rapido..." if "Salva" in modalita_attuale else "⬅️ Invia a sx..."
 
         for nome_fila, max_posti in CAPIENZA_FILE.items():
             st.subheader(nome_fila)
