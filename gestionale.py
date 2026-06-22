@@ -324,16 +324,37 @@ def applica_azione_rapida(idx, widget_key):
     if azione != "⚡ Azione":
         df = carica_prenotazioni()
         if not df.empty and idx in df.index:
-            if azione == "📍 Presente":
+            # ⭐ NUOVA AZIONE SPECIALE: LIBERA E SUBENTRA ⭐
+            if azione == "🔄 Libera e Subentra":
+                # Trasforma la vecchia prenotazione (Emilia) in Mezza Giornata mantendendo soldi e firma
+                df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
+                # Ricalcola il prezzo corretto dimezzato o ridotto per mezza giornata automaticamente
+                data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
+                prezzo_mezza = calcola_prezzo_automatico(data_obj, df.loc[idx, 'Fila'], df.loc[idx, 'Persone'], "Mezza Giornata (fino 13 / da 15.30)", [])
+                df.loc[idx, 'Prezzo_Giorno'] = prezzo_mezza
+                
+                nota_prec = str(df.loc[idx, 'Note']) if pd.notna(df.loc[idx, 'Note']) else ""
+                df.loc[idx, 'Note'] = f"Mattina (Subentrato). {nota_prec}".strip()
+                # Lo stato va su Libero_Mat per indicare che la mattina è andata ed è rivendibile
+                df.loc[idx, 'Stato'] = "Libero_Mat"
+                
+                df.to_csv(FILE_PRENOTAZIONI, index=False)
+                backup_istantaneo_telegram(f"Eseguito Libera e Subentro su indice {idx}")
+                st.success("Postazione liberata per il pomeriggio! Il vecchio incasso è al sicuro.")
+            
+            elif azione == "📍 Presente":
                 df.loc[idx, 'Stato'] = "Presente"
             elif azione.startswith("💰 "):
                 nome_breve = azione.replace("💰 ", "")
                 if nome_breve in MAPPA_NOMI_RAPIDI:
                     df.loc[idx, 'Incassato_da'] = MAPPA_NOMI_RAPIDI[nome_breve]
                     df.loc[idx, 'Stato'] = "Pres_Pagato"
-            df.to_csv(FILE_PRENOTAZIONI, index=False)
-            backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
+                    
+            if azione != "🔄 Libera e Subentra":
+                df.to_csv(FILE_PRENOTAZIONI, index=False)
+                backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
+        st.rerun()
 
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
@@ -342,8 +363,6 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
         oggi = date.today()
         is_future = data_obj > oggi
         
-        # CONTROLLO OBBLIGATORIO: Se è per un giorno futuro, servono Nome e Cognome. 
-        # Se è per oggi, basta anche solo il Nome ("Luca")
         parole = raw_input.split("-")[0].strip().split()
         if is_future and len(parole) < 2:
             st.error("🚨 ERRORE: Per i GIORNI FUTURI inserisci sia il NOME che il COGNOME del cliente!")
@@ -365,7 +384,6 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
         modalita = st.session_state.get('map_mode', "⚡ Salva Subito")
         
         if "Sinistra" in modalita:
-            # ⬅️ PRECOMPILA LA BARRA LATERALE
             st.session_state['sb_dates'] = (data_obj, data_obj)
             st.session_state['sb_fila'] = fila
             st.session_state['sb_omb'] = omb
@@ -376,12 +394,8 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             
             st.session_state[widget_key] = "" 
         else:
-            # ⚡ SALVA SUBITO IL CLIENTE
             df = carica_prenotazioni()
             prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
-            
-            # AUTOMAZIONE INTELLIGENTE DELLO STATO: 
-            # Se la data è futura diventa "Confermato" (Rosso), se è oggi (o passata) diventa "Presente" (Viola)
             stato_automatico = "Confermato" if is_future else "Presente"
             
             nuova_p = pd.DataFrame([{
@@ -393,7 +407,7 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             }])
             
             if df.empty:
-                df = nuova_p
+                df = nueva_p
             else:
                 df = pd.concat([df, nuova_p], ignore_index=True)
                 
@@ -651,7 +665,7 @@ if submit:
         elif not is_hotel_booking and is_future and len(input_nome.split()) < 2:
             st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME per le prenotazioni dei giorni futuri!")
         elif not is_hotel_booking and is_future and not input_telefono:
-            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per le prenotazioni dei giorni futuri!")
+            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per las prenotazioni dei giorni futuri!")
         else:
             giorni_totali = (data_fine - data_inizio).days + 1
             date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
@@ -955,7 +969,8 @@ else:
                     if widget_key not in st.session_state:
                         st.session_state[widget_key] = "⚡ Azione"
                     
-                    opzioni_rapide = ["⚡ Azione", "📍 Presente"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()]
+                    # ⭐ INSERITA L'AZIONE RAPIDA "🔄 Libera e Subentra" NEL MENU A TENDINA ⭐
+                    opzioni_rapide = ["⚡ Azione", "📍 Presente", "🔄 Libera e Subentra"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()]
                     
                     colonne_griglia[i].selectbox(
                         "Azione Rapida",
