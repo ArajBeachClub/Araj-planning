@@ -109,7 +109,7 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE E MAPPA STRUTTURATA
+# ⚙️ CONFIGURAZIONE TARIFFE E MAPPA STRUTTURATA (Senza Spiaggia Libera)
 # ==========================================
 
 CAPIENZA_FILE = {
@@ -262,6 +262,8 @@ def carica_prenotazioni():
     if os.path.exists(FILE_PRENOTAZIONI):
         try:
             df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
+            
+            # --- SCUDO PROTETTIVO: PULIZIA COLONNE ---
             if "Hotel" not in df.columns: df["Hotel"] = ""
             if "Persone" not in df.columns: df["Persone"] = 2
             if "Durata" not in df.columns: df["Durata"] = "Giornata Intera"
@@ -271,16 +273,21 @@ def carica_prenotazioni():
             if "Operatore" not in df.columns: df["Operatore"] = ""
             if "Incassato_da" not in df.columns: df["Incassato_da"] = "Da saldare"
             if "Sconto" not in df.columns: df["Sconto"] = 0.0
+            if "Telefono" not in df.columns: df["Telefono"] = ""
             
-            df["Hotel"] = df["Hotel"].fillna("")
-            df["Persone"] = df["Persone"].fillna(2)
-            df["Durata"] = df["Durata"].fillna("Giornata Intera")
-            df["Extra"] = df["Extra"].fillna("")
-            df["Nome"] = df["Nome"].fillna("")
-            df["Note"] = df["Note"].fillna("")
-            df["Operatore"] = df["Operatore"].fillna("")
-            df["Incassato_da"] = df["Incassato_da"].fillna("Da saldare")
-            df["Sconto"] = df["Sconto"].fillna(0.0)
+            # Pulisce tutti i 'None', 'nan' o vuoti dalle colonne di testo
+            colonne_testo = ["Nome", "Telefono", "Hotel", "Durata", "Extra", "Note", "Operatore", "Incassato_da", "Stato"]
+            for col in colonne_testo:
+                if col in df.columns:
+                    df[col] = df[col].fillna("")
+                    df[col] = df[col].astype(str).replace(["None", "nan", "NaN"], "")
+            
+            # Forza le colonne numeriche ad essere sempre numeri veri (se vuoto = 0)
+            colonne_numeriche = ["Prezzo_Giorno", "Sconto", "Persone"]
+            for col in colonne_numeriche:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                    
             return df
         except Exception:
             pass
@@ -324,18 +331,14 @@ def applica_azione_rapida(idx, widget_key):
     if azione != "⚡ Azione":
         df = carica_prenotazioni()
         if not df.empty and idx in df.index:
-            # ⭐ NUOVA AZIONE SPECIALE: LIBERA E SUBENTRA ⭐
             if azione == "🔄 Libera e Subentra":
-                # Trasforma la vecchia prenotazione (Emilia) in Mezza Giornata mantendendo soldi e firma
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
-                # Ricalcola il prezzo corretto dimezzato o ridotto per mezza giornata automaticamente
                 data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
                 prezzo_mezza = calcola_prezzo_automatico(data_obj, df.loc[idx, 'Fila'], df.loc[idx, 'Persone'], "Mezza Giornata (fino 13 / da 15.30)", [])
                 df.loc[idx, 'Prezzo_Giorno'] = prezzo_mezza
                 
                 nota_prec = str(df.loc[idx, 'Note']) if pd.notna(df.loc[idx, 'Note']) else ""
                 df.loc[idx, 'Note'] = f"Mattina (Subentrato). {nota_prec}".strip()
-                # Lo stato va su Libero_Mat per indicare che la mattina è andata ed è rivendibile
                 df.loc[idx, 'Stato'] = "Libero_Mat"
                 
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
@@ -407,7 +410,7 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             }])
             
             if df.empty:
-                df = nueva_p
+                df = nuova_p
             else:
                 df = pd.concat([df, nuova_p], ignore_index=True)
                 
@@ -521,6 +524,8 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
                 if st.button("💾 Salva Modifiche da Ricerca"):
+                    edited_df = edited_df.dropna(subset=['Data'])
+                    
                     df_pren_temp = df_pren.drop(risultati.index)
                     has_overlap = False
                     
@@ -665,7 +670,7 @@ if submit:
         elif not is_hotel_booking and is_future and len(input_nome.split()) < 2:
             st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME per le prenotazioni dei giorni futuri!")
         elif not is_hotel_booking and is_future and not input_telefono:
-            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per las prenotazioni dei giorni futuri!")
+            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per le prenotazioni dei giorni futuri!")
         else:
             giorni_totali = (data_fine - data_inizio).days + 1
             date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
@@ -969,7 +974,6 @@ else:
                     if widget_key not in st.session_state:
                         st.session_state[widget_key] = "⚡ Azione"
                     
-                    # ⭐ INSERITA L'AZIONE RAPIDA "🔄 Libera e Subentra" NEL MENU A TENDINA ⭐
                     opzioni_rapide = ["⚡ Azione", "📍 Presente", "🔄 Libera e Subentra"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()]
                     
                     colonne_griglia[i].selectbox(
@@ -1042,6 +1046,8 @@ else:
         edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
         if st.button("💾 Salva Modifiche Tabella", type="primary"):
+            edited_range = edited_range.dropna(subset=['Data'])
+            
             df_pren_temp = df_pren.drop(df_range.index)
             has_overlap = False
             
@@ -1091,9 +1097,10 @@ else:
     st.info("Questo è il resoconto completo. I clienti in 'Subentro' si sommano automaticamente per calcolare l'incasso reale. Puoi stampare questa pagina premendo Ctrl+P (o Cmd+P su Mac).")
 
     if not df_range.empty:
-        incasso_totale = df_range['Prezzo_Giorno'].sum()
-        totale_persone = df_range['Persone'].sum()
-        totale_sconti = df_range['Sconto'].sum()
+        # FORZATURA NUMERICA DI SICUREZZA PER EVITARE CRASH SULLE SOMME
+        incasso_totale = float(pd.to_numeric(df_range['Prezzo_Giorno'], errors='coerce').fillna(0).sum())
+        totale_persone = int(pd.to_numeric(df_range['Persone'], errors='coerce').fillna(0).sum())
+        totale_sconti = float(pd.to_numeric(df_range['Sconto'], errors='coerce').fillna(0).sum())
         
         col_r1, col_r2, col_r3 = st.columns(3)
         col_r1.metric("💶 Incasso Netto Giornaliero", f"€ {incasso_totale:.2f}")
