@@ -29,6 +29,8 @@ if 'msg_nome' not in st.session_state: st.session_state['msg_nome'] = ""
 if 'msg_tel' not in st.session_state: st.session_state['msg_tel'] = ""
 if 'msg_dates' not in st.session_state: st.session_state['msg_dates'] = []
 
+if 'map_error' not in st.session_state: st.session_state['map_error'] = ""
+
 # ==========================================
 # 👤 TEAM E OPERATORI
 # ==========================================
@@ -207,7 +209,7 @@ CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Confermato", "Attesa", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
     "Fila": st.column_config.SelectboxColumn("Fila", options=list(CAPIENZA_FILE.keys())),
-    "Ombrellone": st.column_config.NumberColumn("Ombrellone", step=1), # Aggiunto scudo per l'ordine numerico
+    "Ombrellone": st.column_config.NumberColumn("Ombrellone", step=1),
     "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
     "Sconto": st.column_config.NumberColumn("Sconto (€)", step=1.0),
@@ -283,13 +285,11 @@ def carica_prenotazioni():
                     df[col] = df[col].fillna("")
                     df[col] = df[col].astype(str).replace(["None", "nan", "NaN"], "")
             
-            # FORZIAMO OMBRELLONE E PERSONE COME NUMERI INTERI!
             colonne_intere = ["Ombrellone", "Persone"]
             for col in colonne_intere:
                 if col in df.columns:
                     df[col] = pd.to_numeric(df[col], errors='coerce').fillna(1).astype(int)
             
-            # FORZIAMO PREZZI E SCONTI COME DECIMALI!
             colonne_decimali = ["Prezzo_Giorno", "Sconto"]
             for col in colonne_decimali:
                 if col in df.columns:
@@ -397,7 +397,7 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
         if "Sinistra" in modalita:
             st.session_state['sb_dates'] = (data_obj, data_obj)
             st.session_state['sb_fila'] = fila
-            st.session_state['sb_omb'] = int(omb)  # Assicuriamoci sia un intero
+            st.session_state['sb_omb'] = int(omb)
             st.session_state['sb_operatore'] = operatore_finale
             
             rk = st.session_state.get('reset_form', 0)
@@ -406,15 +406,25 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             st.session_state[widget_key] = "" 
         else:
             df = carica_prenotazioni()
-            prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
+            
+            # --- AUTO-RILEVAMENTO SUBENTRO ---
+            # Se stiamo salvando un nome nuovo dove c'era un "Libero_Mat", lo mettiamo come Mezza Giornata
+            is_subentro = False
+            if not df.empty:
+                esistenti = df[(df['Data'] == data_str) & (df['Fila'] == fila) & (df['Ombrellone'] == int(omb))]
+                if not esistenti.empty and esistenti.iloc[-1]['Stato'] in ["Libero_Mat", "Libero_Pom"]:
+                    is_subentro = True
+
+            durata_assegnata = "Mezza Giornata (fino 13 / da 15.30)" if is_subentro else "Giornata Intera"
+            prezzo = calcola_prezzo_automatico(data_obj, fila, 2, durata_assegnata, [])
             stato_automatico = "Confermato" if is_future else "Presente"
             
             nuova_p = pd.DataFrame([{
-                "Data": data_str, "Fila": fila, "Ombrellone": int(omb), # Forziamo Intero
+                "Data": data_str, "Fila": fila, "Ombrellone": int(omb),
                 "Nome": nome_cliente, "Telefono": "", "Stato": stato_automatico,
                 "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
-                "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
-                "Note": "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
+                "Persone": 2, "Durata": durata_assegnata, "Extra": "",
+                "Note": "Subentro pomeridiano" if is_subentro else "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
             }])
             
             if df.empty:
@@ -532,7 +542,9 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
                 if st.button("💾 Salva Modifiche da Ricerca"):
+                    # SCUDO PROTEZIONE ERRORI SULLE DATE: Elimina le righe vuote e non formattate bene
                     edited_df = edited_df.dropna(subset=['Data'])
+                    edited_df = edited_df[pd.notnull(pd.to_datetime(edited_df['Data'], errors='coerce'))]
                     
                     df_pren_temp = df_pren.drop(risultati.index)
                     has_overlap = False
@@ -678,7 +690,7 @@ if submit:
         elif not is_hotel_booking and is_future and len(input_nome.split()) < 2:
             st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME per le prenotazioni dei giorni futuri!")
         elif not is_hotel_booking and is_future and not input_telefono:
-            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per las prenotazioni dei giorni futuri!")
+            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per le prenotazioni dei giorni futuri!")
         else:
             giorni_totali = (data_fine - data_inizio).days + 1
             date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
@@ -732,7 +744,7 @@ if submit:
                         
                         if stato_pulito != "Libero":
                             nuova_p = pd.DataFrame([{
-                                "Data": giorno_corrente_str, "Fila": input_fila, "Ombrellone": int(omb_corrente), # Forziamo Intero
+                                "Data": giorno_corrente_str, "Fila": input_fila, "Ombrellone": int(omb_corrente),
                                 "Nome": input_nome, "Telefono": input_telefono, "Stato": stato_pulito,
                                 "Prezzo_Giorno": prezzo_finale_unitario, "Sconto": 0.0, "Hotel": str(input_hotel).strip(),
                                 "Persone": input_persone, "Durata": input_durata, "Extra": ", ".join(input_extra), 
@@ -887,9 +899,9 @@ else:
         st.divider()
 
         def controlla_posto(numero_ombrellone, fila):
-            if df_range.empty: return "#28a745", "Libero", "", "", "", None
+            if df_range.empty: return "#28a745", "Libero", "", "", "", None, "Libero"
             record = df_range[(df_range['Ombrellone'] == numero_ombrellone) & (df_range['Fila'] == fila)]
-            if record.empty: return "#28a745", "Libero", "", "", "", None
+            if record.empty: return "#28a745", "Libero", "", "", "", None, "Libero"
             
             ultimo_record = record.iloc[-1]
             
@@ -930,7 +942,7 @@ else:
                 colore_box = "#17a2b8"
                 badge_rivendibile = "<span style='background:#fff; color:#17a2b8; padding:2px 4px; border-radius:4px; font-weight:bold; font-size:10px; display:inline-block; margin-bottom:4px;'>🌇 LIBERO POMERIGG.</span><br>"
             
-            return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile, ultimo_record.name
+            return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile, ultimo_record.name, stato
 
         modalita_attuale = st.session_state.get("map_mode", "⚡ Salva Subito")
         placeholder_txt = "✏️ Nome rapido..." if "Salva" in modalita_attuale else "⬅️ Invia a sx..."
@@ -940,7 +952,7 @@ else:
             colonne_griglia = st.columns(max_posti) 
             for i in range(max_posti):
                 numero_omb = i + 1
-                colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx = controlla_posto(numero_omb, nome_fila)
+                colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx, stato_omb = controlla_posto(numero_omb, nome_fila)
                 
                 # --- CALCOLO NUOVE ETICHETTE FISICHE REAL-TIME ---
                 etichetta = ""
@@ -997,6 +1009,21 @@ else:
                         on_change=applica_azione_rapida,
                         args=(row_idx, widget_key)
                     )
+                    
+                    # SE E' LIBERATO, MOSTRA ANCHE LA CASELLA PER INSERIRE IL NUOVO CLIENTE!
+                    if stato_omb in ["Libero_Mat", "Libero_Pom"]:
+                        widget_key_sub = f"quick_add_sub_{nome_fila}_{numero_omb}_{data_inizio_vis}"
+                        if widget_key_sub not in st.session_state:
+                            st.session_state[widget_key_sub] = ""
+                        
+                        colonne_griglia[i].text_input(
+                            "Subentro",
+                            placeholder="✏️ Nuovo cliente...",
+                            label_visibility="collapsed",
+                            key=widget_key_sub,
+                            on_change=gestisci_input_mappa,
+                            args=(nome_fila, numero_omb, date_range_vis[0], widget_key_sub, operatore_attivo)
+                        )
                 else:
                     widget_key = f"quick_add_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                     if widget_key not in st.session_state:
@@ -1059,8 +1086,9 @@ else:
         edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
         if st.button("💾 Salva Modifiche Tabella", type="primary"):
-            # SCUDO: Rimuove eventuali righe vuote inserite per sbaglio
+            # SCUDO: Rimuove eventuali righe vuote o con date non valide inserite per sbaglio
             edited_range = edited_range.dropna(subset=['Data'])
+            edited_range = edited_range[pd.notnull(pd.to_datetime(edited_range['Data'], errors='coerce'))]
             
             df_pren_temp = df_pren.drop(df_range.index)
             has_overlap = False
