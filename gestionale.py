@@ -207,6 +207,7 @@ CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Confermato", "Attesa", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
     "Fila": st.column_config.SelectboxColumn("Fila", options=list(CAPIENZA_FILE.keys())),
+    "Ombrellone": st.column_config.NumberColumn("Ombrellone", step=1), # Aggiunto scudo per l'ordine numerico
     "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
     "Sconto": st.column_config.NumberColumn("Sconto (€)", step=1.0),
@@ -274,19 +275,25 @@ def carica_prenotazioni():
             if "Incassato_da" not in df.columns: df["Incassato_da"] = "Da saldare"
             if "Sconto" not in df.columns: df["Sconto"] = 0.0
             if "Telefono" not in df.columns: df["Telefono"] = ""
+            if "Ombrellone" not in df.columns: df["Ombrellone"] = 1
             
-            # Pulisce tutti i 'None', 'nan' o vuoti dalle colonne di testo
             colonne_testo = ["Nome", "Telefono", "Hotel", "Durata", "Extra", "Note", "Operatore", "Incassato_da", "Stato"]
             for col in colonne_testo:
                 if col in df.columns:
                     df[col] = df[col].fillna("")
                     df[col] = df[col].astype(str).replace(["None", "nan", "NaN"], "")
             
-            # Forza le colonne numeriche ad essere sempre numeri veri (se vuoto = 0)
-            colonne_numeriche = ["Prezzo_Giorno", "Sconto", "Persone"]
-            for col in colonne_numeriche:
+            # FORZIAMO OMBRELLONE E PERSONE COME NUMERI INTERI!
+            colonne_intere = ["Ombrellone", "Persone"]
+            for col in colonne_intere:
                 if col in df.columns:
-                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0)
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(1).astype(int)
+            
+            # FORZIAMO PREZZI E SCONTI COME DECIMALI!
+            colonne_decimali = ["Prezzo_Giorno", "Sconto"]
+            for col in colonne_decimali:
+                if col in df.columns:
+                    df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
                     
             return df
         except Exception:
@@ -368,7 +375,8 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
         
         parole = raw_input.split("-")[0].strip().split()
         if is_future and len(parole) < 2:
-            st.error("🚨 ERRORE: Per i GIORNI FUTURI inserisci sia il NOME che il COGNOME del cliente!")
+            st.session_state['map_error'] = f"🚨 ATTENZIONE: Hai provato a prenotare per i GIORNI FUTURI inserendo solo '{raw_input}'. È obbligatorio inserire anche il COGNOME!"
+            st.session_state[widget_key] = ""
             return
             
         nome_cliente = raw_input
@@ -389,7 +397,7 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
         if "Sinistra" in modalita:
             st.session_state['sb_dates'] = (data_obj, data_obj)
             st.session_state['sb_fila'] = fila
-            st.session_state['sb_omb'] = omb
+            st.session_state['sb_omb'] = int(omb)  # Assicuriamoci sia un intero
             st.session_state['sb_operatore'] = operatore_finale
             
             rk = st.session_state.get('reset_form', 0)
@@ -402,7 +410,7 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             stato_automatico = "Confermato" if is_future else "Presente"
             
             nuova_p = pd.DataFrame([{
-                "Data": data_str, "Fila": fila, "Ombrellone": omb,
+                "Data": data_str, "Fila": fila, "Ombrellone": int(omb), # Forziamo Intero
                 "Nome": nome_cliente, "Telefono": "", "Stato": stato_automatico,
                 "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
                 "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
@@ -545,7 +553,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                         stato_finale = edited_df.loc[idx, 'Stato']
                         d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
                         fila = edited_df.loc[idx, 'Fila']
-                        omb = edited_df.loc[idx, 'Ombrellone']
+                        omb = int(edited_df.loc[idx, 'Ombrellone'])
 
                         if stato_finale != "Libero":
                             overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
@@ -670,7 +678,7 @@ if submit:
         elif not is_hotel_booking and is_future and len(input_nome.split()) < 2:
             st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME per le prenotazioni dei giorni futuri!")
         elif not is_hotel_booking and is_future and not input_telefono:
-            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per le prenotazioni dei giorni futuri!")
+            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per las prenotazioni dei giorni futuri!")
         else:
             giorni_totali = (data_fine - data_inizio).days + 1
             date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
@@ -724,7 +732,7 @@ if submit:
                         
                         if stato_pulito != "Libero":
                             nuova_p = pd.DataFrame([{
-                                "Data": giorno_corrente_str, "Fila": input_fila, "Ombrellone": omb_corrente,
+                                "Data": giorno_corrente_str, "Fila": input_fila, "Ombrellone": int(omb_corrente), # Forziamo Intero
                                 "Nome": input_nome, "Telefono": input_telefono, "Stato": stato_pulito,
                                 "Prezzo_Giorno": prezzo_finale_unitario, "Sconto": 0.0, "Hotel": str(input_hotel).strip(),
                                 "Persone": input_persone, "Durata": input_durata, "Extra": ", ".join(input_extra), 
@@ -855,6 +863,11 @@ else:
     if giorni_totali_vis == 1:
         data_formattata_ita = f"{data_inizio_vis.day} {MESI_ITA[data_inizio_vis.month]} {data_inizio_vis.year}"
         
+        # Mostra eventuali errori di inserimento mappa rimasti bloccati
+        if st.session_state.get('map_error'):
+            st.error(st.session_state['map_error'])
+            st.session_state['map_error'] = ""
+            
         st.header(f"📅 Planning del {data_formattata_ita}")
         
         col_t1, col_t2 = st.columns([2, 1])
@@ -1046,6 +1059,7 @@ else:
         edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
         if st.button("💾 Salva Modifiche Tabella", type="primary"):
+            # SCUDO: Rimuove eventuali righe vuote inserite per sbaglio
             edited_range = edited_range.dropna(subset=['Data'])
             
             df_pren_temp = df_pren.drop(df_range.index)
@@ -1067,7 +1081,7 @@ else:
                 stato_finale = edited_range.loc[idx, 'Stato']
                 d_str = pd.to_datetime(edited_range.loc[idx, 'Data']).strftime('%Y-%m-%d')
                 fila = edited_range.loc[idx, 'Fila']
-                omb = edited_range.loc[idx, 'Ombrellone']
+                omb = int(edited_range.loc[idx, 'Ombrellone'])
 
                 if stato_finale != "Libero":
                     overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
@@ -1097,7 +1111,7 @@ else:
     st.info("Questo è il resoconto completo. I clienti in 'Subentro' si sommano automaticamente per calcolare l'incasso reale. Puoi stampare questa pagina premendo Ctrl+P (o Cmd+P su Mac).")
 
     if not df_range.empty:
-        # FORZATURA NUMERICA DI SICUREZZA PER EVITARE CRASH SULLE SOMME
+        # FORZATURA NUMERICA DI SICUREZZA PER EVITARE CRASH SULLE SOMME E SUI DECIMALI
         incasso_totale = float(pd.to_numeric(df_range['Prezzo_Giorno'], errors='coerce').fillna(0).sum())
         totale_persone = int(pd.to_numeric(df_range['Persone'], errors='coerce').fillna(0).sum())
         totale_sconti = float(pd.to_numeric(df_range['Sconto'], errors='coerce').fillna(0).sum())
