@@ -205,6 +205,7 @@ STATI_MAP = {
     "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
+# --- CONFIGURAZIONE AGGIORNATA CON MENU A TENDINA PER GLI EXTRA ---
 CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Confermato", "Attesa", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
@@ -214,6 +215,15 @@ CONFIGURAZIONE_COLONNE = {
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
     "Sconto": st.column_config.NumberColumn("Sconto (€)", step=1.0),
     "Persone": st.column_config.NumberColumn("Persone", min_value=1, step=1),
+    "Extra": st.column_config.SelectboxColumn("Extra", options=[
+        "", 
+        "Lettino Singolo", 
+        "Telo Mare Extra", 
+        "Lettino Singolo, Telo Mare Extra", 
+        "Lettino Singolo, Lettino Singolo", 
+        "Telo Mare Extra, Telo Mare Extra",
+        "Postazione Esterna"
+    ]),
     "Note": st.column_config.TextColumn("Note / Memo"),
     "Operatore": st.column_config.SelectboxColumn("Operatore", options=OPERATORI_SPIAGGIA),
     "Incassato_da": st.column_config.SelectboxColumn("Incassato da", options=OPZIONI_INCASSO)
@@ -364,7 +374,7 @@ def applica_azione_rapida(idx, widget_key):
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
-        st.rerun()
+        # ST.RERUN() RIMOSSO PER EVITARE L'AVVISO GIALLO DI STREAMLIT!
 
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
@@ -551,18 +561,25 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 new_durata = str(edited_df.loc[idx, 'Durata'])
                                 old_persone = int(risultati.loc[idx, 'Persone'])
                                 new_persone = int(edited_df.loc[idx, 'Persone'])
+                                
+                                old_ex_val = risultati.loc[idx, 'Extra']
+                                new_ex_val = edited_df.loc[idx, 'Extra']
+                                old_extra = "" if pd.isna(old_ex_val) or str(old_ex_val).lower() in ['nan', 'none'] else str(old_ex_val).strip()
+                                new_extra = "" if pd.isna(new_ex_val) or str(new_ex_val).lower() in ['nan', 'none'] else str(new_ex_val).strip()
+                                
                                 old_prezzo = float(risultati.loc[idx, 'Prezzo_Giorno'])
                                 new_prezzo = float(edited_df.loc[idx, 'Prezzo_Giorno'])
                                 
-                                if (old_durata != new_durata or old_persone != new_persone) and (old_prezzo == new_prezzo):
+                                # Se qualcosa è cambiato MA il prezzo è rimasto quello vecchio, il sistema ricalcola da solo
+                                if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra) and (old_prezzo == new_prezzo):
                                     d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
                                     data_obj = pd.to_datetime(d_str).date()
-                                    ex_val = str(edited_df.loc[idx, 'Extra'])
-                                    extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() != 'nan' else []
+                                    extra_list = [x.strip() for x in new_extra.split(',')] if new_extra else []
                                     
                                     nuovo_pz = calcola_prezzo_automatico(data_obj, str(edited_df.loc[idx, 'Fila']), new_persone, new_durata, extra_list)
                                     if str(edited_df.loc[idx, 'Incassato_da']) != "Ospite (Gratis)":
                                         edited_df.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
+                                        edited_df.loc[idx, 'Extra'] = new_extra
                         except Exception:
                             pass
                     
@@ -1099,7 +1116,7 @@ else:
         if giorni_totali_vis > 1:
             st.warning("⚠️ Stai visualizzando e modificando i dati di PIÙ GIORNI contemporaneamente.")
         else:
-            st.info("💡 Fai doppio clic sulle celle per cambiare Stato, Operatore o Note.\n\n✨ **NOVITÀ:** Se modifichi la **Durata** (es. Mezza Giornata) o le **Persone**, appena clicchi Salva il sistema ricalcolerà il prezzo in automatico!")
+            st.info("💡 Fai doppio clic sulle celle per cambiare Stato, Operatore o Note.\n\n✨ **NOVITÀ:** Se modifichi la **Durata**, le **Persone** o gli **Extra**, appena clicchi Salva il sistema ricalcolerà il prezzo in automatico!")
         
         colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
         if 'Hotel' in df_range.columns: 
@@ -1126,19 +1143,25 @@ else:
                         new_durata = str(edited_range.loc[idx, 'Durata'])
                         old_persone = int(df_range.loc[idx, 'Persone'])
                         new_persone = int(edited_range.loc[idx, 'Persone'])
+                        
+                        old_ex_val = df_range.loc[idx, 'Extra']
+                        new_ex_val = edited_range.loc[idx, 'Extra']
+                        old_extra = "" if pd.isna(old_ex_val) or str(old_ex_val).lower() in ['nan', 'none'] else str(old_ex_val).strip()
+                        new_extra = "" if pd.isna(new_ex_val) or str(new_ex_val).lower() in ['nan', 'none'] else str(new_ex_val).strip()
+                        
                         old_prezzo = float(df_range.loc[idx, 'Prezzo_Giorno'])
                         new_prezzo = float(edited_range.loc[idx, 'Prezzo_Giorno'])
                         
-                        # Ricalcola solo se Durata o Persone sono cambiate, e l'utente NON ha cambiato il prezzo a mano
-                        if (old_durata != new_durata or old_persone != new_persone) and (old_prezzo == new_prezzo):
+                        # Ricalcola se Durata, Persone o Extra sono cambiati, e l'utente NON ha cambiato il prezzo a mano
+                        if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra) and (old_prezzo == new_prezzo):
                             d_str = pd.to_datetime(edited_range.loc[idx, 'Data']).strftime('%Y-%m-%d')
                             data_obj = pd.to_datetime(d_str).date()
-                            ex_val = str(edited_range.loc[idx, 'Extra'])
-                            extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() != 'nan' else []
+                            extra_list = [x.strip() for x in new_extra.split(',')] if new_extra else []
                             
                             nuovo_pz = calcola_prezzo_automatico(data_obj, str(edited_range.loc[idx, 'Fila']), new_persone, new_durata, extra_list)
                             if str(edited_range.loc[idx, 'Incassato_da']) != "Ospite (Gratis)":
                                 edited_range.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
+                                edited_range.loc[idx, 'Extra'] = new_extra
                 except Exception:
                     pass
             
