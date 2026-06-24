@@ -185,11 +185,13 @@ TARIFFE = {
     }
 }
 
+# --- MENU EXTRA PIÙ CHIARI ---
 PREZZI_EXTRA = {
-    "Lettino Singolo": 12,
-    "Ombrellone Singolo Libera": 25,
-    "Postazione Esterna": 45,
-    "Telo Mare Extra": 5
+    "1 Lettino Extra": 12,
+    "2 Lettini Extra": 24,
+    "1 Asciugamano (Telo)": 5,
+    "2 Asciugamani (Teli)": 10,
+    "Postazione Esterna": 45
 }
 
 MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
@@ -216,11 +218,12 @@ CONFIGURAZIONE_COLONNE = {
     "Persone": st.column_config.NumberColumn("Persone", min_value=1, step=1),
     "Extra": st.column_config.SelectboxColumn("Extra", options=[
         "", 
-        "Lettino Singolo", 
-        "Telo Mare Extra", 
-        "Lettino Singolo, Telo Mare Extra", 
-        "Lettino Singolo, Lettino Singolo", 
-        "Telo Mare Extra, Telo Mare Extra",
+        "1 Lettino Extra", 
+        "2 Lettini Extra", 
+        "1 Asciugamano (Telo)", 
+        "2 Asciugamani (Teli)", 
+        "1 Lettino Extra, 1 Asciugamano (Telo)", 
+        "2 Lettini Extra, 2 Asciugamani (Teli)",
         "Postazione Esterna"
     ]),
     "Note": st.column_config.TextColumn("Note / Memo"),
@@ -292,7 +295,8 @@ def carica_prenotazioni():
             for col in colonne_testo:
                 if col in df.columns:
                     df[col] = df[col].fillna("")
-                    df[col] = df[col].astype(str).replace(["None", "nan", "NaN"], "")
+                    # ELIMINA IL "NONE" IN MODO PERFETTO E INVISIBILE!
+                    df[col] = df[col].apply(lambda x: "" if str(x).strip().lower() in ["none", "nan", ""] else str(x).strip())
             
             colonne_intere = ["Ombrellone", "Persone"]
             for col in colonne_intere:
@@ -746,6 +750,7 @@ if submit:
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
         is_future = data_inizio > oggi
         
+        # CONTROLLI RIGIDI SOLO SE NON È UN HOTEL E NON È UN CLIENTE FISSO
         if not is_hotel_booking and not is_fisso_booking and not input_nome:
             st.sidebar.error("⚠️ Il campo Nome è obbligatorio per i nuovi clienti!")
         elif not is_hotel_booking and not is_fisso_booking and is_future and len(input_nome.split()) < 2:
@@ -828,6 +833,7 @@ if submit:
                 backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {nome_da_salvare}")
                 st.sidebar.success("✅ Salvataggio completato! Il messaggio qui sotto è pronto da inviare.")
                 
+                # PRECOMPILA MESSAGGIO AUTOMATICO
                 st.session_state['msg_tipo'] = "Hotel" if is_hotel_booking else "Privato"
                 st.session_state['msg_nome'] = input_hotel if is_hotel_booking else nome_da_salvare
                 st.session_state['msg_tel'] = input_telefono
@@ -1136,7 +1142,7 @@ else:
         if giorni_totali_vis > 1:
             st.warning("⚠️ Stai visualizzando e modificando i dati di PIÙ GIORNI contemporaneamente.")
         else:
-            st.info("💡 Fai doppio clic sulle celle per cambiare Stato, Operatore o Note.\n\n✨ **NOVITÀ:** Se modifichi la **Durata**, le **Persone** o gli **Extra**, appena clicchi Salva il sistema ricalcolerà il prezzo in automatico!")
+            st.info("💡 Fai doppio clic sulle celle per cambiare Stato, Operatore o Note.\n\n✨ **NOVITÀ:** Se modifichi la **Durata**, le **Persone** o gli **Extra**, appena clicchi il tasto rosso Salva il sistema ricalcolerà il prezzo in automatico e te lo mostrerà aggiornato!")
         
         colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
         if 'Hotel' in df_range.columns: 
@@ -1235,7 +1241,7 @@ else:
                 df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
                 df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram("Modifiche salvate dalla tabella in basso")
-                st.success("✅ Dati aggiornati!")
+                st.success("✅ Dati aggiornati! Guarda il nuovo prezzo in tabella.")
                 st.rerun()
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
