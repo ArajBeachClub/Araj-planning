@@ -205,7 +205,6 @@ STATI_MAP = {
     "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
-# --- CONFIGURAZIONE AGGIORNATA CON MENU A TENDINA PER GLI EXTRA ---
 CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Confermato", "Attesa", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
@@ -374,7 +373,7 @@ def applica_azione_rapida(idx, widget_key):
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
-        # ST.RERUN() RIMOSSO PER EVITARE L'AVVISO GIALLO DI STREAMLIT!
+        
 
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
@@ -553,7 +552,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     edited_df = edited_df.dropna(subset=['Data'])
                     edited_df = edited_df[pd.notnull(pd.to_datetime(edited_df['Data'], errors='coerce'))]
                     
-                    # --- AUTO RICALCOLO PREZZO DA RICERCA ---
+                    # --- AUTO RICALCOLO PREZZO DA RICERCA INTELLIGENTE ---
                     for idx in edited_df.index:
                         try:
                             if idx in risultati.index:
@@ -570,7 +569,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 old_prezzo = float(risultati.loc[idx, 'Prezzo_Giorno'])
                                 new_prezzo = float(edited_df.loc[idx, 'Prezzo_Giorno'])
                                 
-                                # Se qualcosa è cambiato MA il prezzo è rimasto quello vecchio, il sistema ricalcola da solo
+                                # Se l'utente ha cambiato Durata, Persone o Extra E non ha modificato il prezzo a mano
                                 if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra) and (old_prezzo == new_prezzo):
                                     d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
                                     data_obj = pd.to_datetime(d_str).date()
@@ -604,16 +603,31 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                         fila = edited_df.loc[idx, 'Fila']
                         omb = int(edited_df.loc[idx, 'Ombrellone'])
 
+                        # NUOVO CONTROLLO SOVRAPPOSIZIONI INTELLIGENTE
                         if stato_finale != "Libero":
                             overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
                                                    (df_pren_temp['Fila'] == fila) & 
                                                    (df_pren_temp['Ombrellone'] == omb) &
                                                    (df_pren_temp['Stato'] != "Libero")]
                             if not overlap.empty:
-                                nome_occ = overlap.iloc[0]['Nome']
-                                st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
-                                has_overlap = True
-                                break
+                                conflitto_reale = False
+                                nome_occ = ""
+                                durata_corrente = str(edited_df.loc[idx, 'Durata'])
+                                for _, o_row in overlap.iterrows():
+                                    st_es = str(o_row['Stato'])
+                                    dur_es = str(o_row['Durata'])
+                                    # Se è un subentro o mezza giornata, non c'è conflitto
+                                    if st_es in ["Libero_Mat", "Libero_Pom"] or ("Mezza" in durata_corrente and "Mezza" in dur_es):
+                                        continue
+                                    else:
+                                        conflitto_reale = True
+                                        nome_occ = str(o_row['Nome'])
+                                        break
+                                
+                                if conflitto_reale:
+                                    st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ} (Giornata Intera).")
+                                    has_overlap = True
+                                    break
 
                     if not has_overlap:
                         df_pren = df_pren_temp
@@ -714,11 +728,10 @@ if submit:
     is_hotel_booking = bool(input_hotel.strip())
     is_fisso_booking = bool(input_fisso.strip())
     
-    # Decidiamo chi comanda nel nome
     nome_da_salvare = ""
     if is_fisso_booking:
         nome_da_salvare = input_fisso
-        if input_nome:  # Se per sbaglio ha compilato anche l'altro, li uniamo per non perdere i dati
+        if input_nome:  
             nome_da_salvare += f" {input_nome}"
     elif is_hotel_booking and not input_nome:
         nome_da_salvare = f"Ospiti {input_hotel}"
@@ -733,7 +746,6 @@ if submit:
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
         is_future = data_inizio > oggi
         
-        # CONTROLLI RIGIDI SOLO SE NON È UN HOTEL E NON È UN CLIENTE FISSO
         if not is_hotel_booking and not is_fisso_booking and not input_nome:
             st.sidebar.error("⚠️ Il campo Nome è obbligatorio per i nuovi clienti!")
         elif not is_hotel_booking and not is_fisso_booking and is_future and len(input_nome.split()) < 2:
@@ -752,13 +764,22 @@ if submit:
                 
             stato_pulito = STATI_MAP[input_stato]
             
+            conflitto_sidebar = False
             if not sovrapposizioni.empty and tipo_salvataggio == "Blocca (Errore)" and stato_pulito != "Libero":
-                st.sidebar.error("🚨 ERRORE: POSTAZIONE GIÀ OCCUPATA!")
-                for _, row_conf in sovrapposizioni.drop_duplicates(subset=['Ombrellone', 'Nome']).iterrows():
-                    d = row_conf['Data']
-                    d_ita = f"{d[8:10]}/{d[5:7]}/{d[0:4]}" if len(d)==10 else d
-                    st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
-            else:
+                for _, row_conf in sovrapposizioni.iterrows():
+                    st_es = str(row_conf['Stato'])
+                    dur_es = str(row_conf['Durata'])
+                    if st_es in ["Libero_Mat", "Libero_Pom"] or ("Mezza" in input_durata and "Mezza" in dur_es) or st_es == "Libero":
+                        continue
+                    else:
+                        conflitto_sidebar = True
+                        st.sidebar.error("🚨 ERRORE: POSTAZIONE GIÀ OCCUPATA PER L'INTERA GIORNATA!")
+                        d_err = row_conf['Data']
+                        d_ita = f"{d_err[8:10]}/{d_err[5:7]}/{d_err[0:4]}" if len(d_err)==10 else d_err
+                        st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
+                        break
+
+            if not conflitto_sidebar:
                 if input_telefono:
                     tel_norm = normalizza_tel(input_telefono)
                     if not df_clienti.empty:
@@ -807,7 +828,6 @@ if submit:
                 backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {nome_da_salvare}")
                 st.sidebar.success("✅ Salvataggio completato! Il messaggio qui sotto è pronto da inviare.")
                 
-                # PRECOMPILA MESSAGGIO AUTOMATICO
                 st.session_state['msg_tipo'] = "Hotel" if is_hotel_booking else "Privato"
                 st.session_state['msg_nome'] = input_hotel if is_hotel_booking else nome_da_salvare
                 st.session_state['msg_tel'] = input_telefono
@@ -1135,7 +1155,7 @@ else:
             edited_range = edited_range.dropna(subset=['Data'])
             edited_range = edited_range[pd.notnull(pd.to_datetime(edited_range['Data'], errors='coerce'))]
             
-            # --- AUTO RICALCOLO PREZZO DA TABELLA ---
+            # --- AUTO RICALCOLO PREZZO DA TABELLA INTELLIGENTE ---
             for idx in edited_range.index:
                 try:
                     if idx in df_range.index:
@@ -1152,7 +1172,6 @@ else:
                         old_prezzo = float(df_range.loc[idx, 'Prezzo_Giorno'])
                         new_prezzo = float(edited_range.loc[idx, 'Prezzo_Giorno'])
                         
-                        # Ricalcola se Durata, Persone o Extra sono cambiati, e l'utente NON ha cambiato il prezzo a mano
                         if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra) and (old_prezzo == new_prezzo):
                             d_str = pd.to_datetime(edited_range.loc[idx, 'Data']).strftime('%Y-%m-%d')
                             data_obj = pd.to_datetime(d_str).date()
@@ -1192,10 +1211,23 @@ else:
                                            (df_pren_temp['Ombrellone'] == omb) &
                                            (df_pren_temp['Stato'] != "Libero")]
                     if not overlap.empty:
-                        nome_occ = overlap.iloc[0]['Nome']
-                        st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
-                        has_overlap = True
-                        break
+                        conflitto_reale = False
+                        nome_occ = ""
+                        durata_corrente = str(edited_range.loc[idx, 'Durata'])
+                        for _, o_row in overlap.iterrows():
+                            st_es = str(o_row['Stato'])
+                            dur_es = str(o_row['Durata'])
+                            if st_es in ["Libero_Mat", "Libero_Pom"] or ("Mezza" in durata_corrente and "Mezza" in dur_es):
+                                continue
+                            else:
+                                conflitto_reale = True
+                                nome_occ = str(o_row['Nome'])
+                                break
+                        
+                        if conflitto_reale:
+                            st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ} (Giornata Intera).")
+                            has_overlap = True
+                            break
 
             if not has_overlap:
                 df_pren = df_pren_temp
