@@ -181,6 +181,7 @@ TARIFFE = {
     }
 }
 
+# --- ALLINEAMENTO EXTRA PRECISI DA LISTINO ---
 PREZZI_EXTRA = {
     "1 Lettino Extra": {"Feriale": 8, "Festivo": 10},
     "2 Lettini Extra": {"Feriale": 16, "Festivo": 20},
@@ -303,6 +304,47 @@ def carica_prenotazioni():
             
     return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
 
+def forza_aggiornamento_listino_nuovo():
+    if os.path.exists(FILE_PRENOTAZIONI):
+        try:
+            df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
+            if not df.empty:
+                df['Data_Obj'] = pd.to_datetime(df['Data'], errors='coerce').dt.date
+                modificato = False
+                
+                inizio_check = date(2026, 6, 13)
+                fine_check = date(2026, 7, 3) 
+                
+                for idx, row in df.iterrows():
+                    current_date = row['Data_Obj']
+                    if not pd.isna(current_date) and inizio_check <= current_date <= fine_check:
+                        if str(row.get('Incassato_da', '')) != "Ospite (Gratis)":
+                            ex_val = str(row.get('Extra', ''))
+                            extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
+                            
+                            prezzo_corretto = calcola_prezzo_automatico(
+                                current_date, 
+                                str(row.get('Fila', 'Prima Fila')), 
+                                int(row.get('Persone', 2)), 
+                                str(row.get('Durata', 'Giornata Intera')), 
+                                extra_list
+                            )
+                            
+                            if float(row.get('Prezzo_Giorno', 0.0)) != float(prezzo_corretto) and float(row.get('Sconto', 0.0)) == 0.0:
+                                df.loc[idx, 'Prezzo_Giorno'] = float(prezzo_corretto)
+                                modificato = True
+                                
+                if modificato:
+                    df = df.drop(columns=['Data_Obj'], errors='ignore')
+                    df.to_csv(FILE_PRENOTAZIONI, index=False)
+        except Exception:
+            pass
+
+forza_aggiornamento_listino_nuovo()
+
+# ==========================================
+# ⚡ AZIONI RAPIDE DALLA MAPPA VISIVA
+# ==========================================
 def applica_azione_rapida(idx, widget_key):
     azione = st.session_state[widget_key]
     if azione != "⚡ Azione":
@@ -510,9 +552,8 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 risultati_filtrati = risultati[colonne_ordine].copy()
                 
                 # PULIZIA DATE PER EVITARE CRASH
-                risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce')
+                risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
                 risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
-                risultati_filtrati['Data'] = risultati_filtrati['Data'].dt.date
                 
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
@@ -1196,40 +1237,3 @@ else:
                 st.rerun()
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
-
-# --- 📊 REPORT DI FINE GIORNATA ---
-st.sidebar.markdown("---")
-st.divider()
-st.header("📊 Report di Fine Giornata")
-st.info("Questo è il resoconto completo. I clienti in 'Subentro' si sommano automaticamente per calcolare l'incasso reale. Puoi stampare questa pagina premendo Ctrl+P (o Cmd+P su Mac).")
-
-if not df_range.empty:
-    incasso_totale = 0.0 if df_range.empty else float(pd.to_numeric(df_range['Prezzo_Giorno'], errors='coerce').fillna(0).sum())
-    totale_persone = 0 if df_range.empty else int(pd.to_numeric(df_range['Persone'], errors='coerce').fillna(0).sum())
-    totale_sconti = 0.0 if df_range.empty else float(pd.to_numeric(df_range['Sconto'], errors='coerce').fillna(0).sum())
-    
-    col_r1, col_r2, col_r3 = st.columns(3)
-    col_r1.metric("💶 Incasso Netto Giornaliero", f"€ {incasso_totale:.2f}")
-    col_r2.metric("📉 Sconti Applicati Oggi", f"€ {totale_sconti:.2f}")
-    col_r3.metric("👥 Totale Persone Registrate", f"{totale_persone}")
-    
-    colonne_report = ["Data", "Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
-    df_export = df_range[colonne_report].copy()
-    
-    df_export['Fila'] = pd.Categorical(df_export['Fila'], categories=list(CAPIENZA_FILE.keys()), ordered=True)
-    df_export = df_export.sort_values(by=["Data", "Fila", "Ombrellone"])
-    df_export['Fila'] = df_export['Fila'].astype(str)
-    
-    df_export['Data'] = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
-    st.dataframe(df_export, use_container_width=True)
-    
-    csv_report = df_export.to_csv(index=False, sep=';').encode('utf-8')
-    st.download_button(
-        label="⬇️ Scarica Report in Excel/CSV",
-        data=csv_report,
-        file_name=f"Report_Spiaggia_{data_inizio_vis.strftime('%d-%m-%Y')}.csv",
-        mime="text/csv",
-        type="primary"
-    )
-else:
-    st.warning("Nessuna prenotazione da calcolare per questo report.")
