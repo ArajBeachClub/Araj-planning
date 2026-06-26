@@ -107,7 +107,7 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE E MAPPA STRUTTURATA
+# ⚙️ CONFIGURAZIONE STRUTTURA SPIAGGIA
 # ==========================================
 
 CAPIENZA_FILE = {
@@ -119,19 +119,19 @@ CAPIENZA_FILE = {
     "Sesta Fila (Altre)": 6
 }
 
-# Date per la stagione Alta Stagione A 2026 stabilite nel listino ufficiale
+# Intervalli stagionali modificati per attivare la nuova Alta B da domani 27 Giugno
 STAGIONI_DATE = {
     "Media 1": [(date(2026, 5, 30), date(2026, 6, 12))],
     "Media 2": [(date(2026, 6, 13), date(2026, 6, 19))],
-    "Alta A": [(date(2026, 6, 20), date(2026, 7, 3))],  
-    "Alta B": [(date(2026, 7, 4), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
+    "Alta A": [(date(2026, 6, 20), date(2026, 6, 26))],  
+    "Alta B": [(date(2026, 6, 27), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
     "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 8, 24), date(2026, 8, 31))],
     "Peak Season": [(date(2026, 8, 1), date(2026, 8, 23))]
 }
 
-# Festività ufficiali inserite nei controlli per bloccare le tariffe feriali errate
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
+# Tariffe riallineate perfettamente alla foto del listino Alta B
 TARIFFE = {
     "Media 1": {
         "Prima Fila": {"Feriale": [30, 7], "Festivo": [33, 9]},
@@ -158,12 +158,12 @@ TARIFFE = {
         "Sesta Fila (Altre)": {"Feriale": [32, 5], "Festivo": [36, 6]}
     },
     "Alta B": {
-        "Prima Fila": {"Feriale": [40, 8], "Festivo": [42, 10]},
-        "Seconda Fila": {"Feriale": [38, 7], "Festivo": [40, 8]},
-        "Terza Fila": {"Feriale": [38, 7], "Festivo": [40, 8]},
-        "Quarta Fila": {"Feriale": [36, 6], "Festivo": [38, 7]},
-        "Quinta Fila": {"Feriale": [36, 6], "Festivo": [38, 7]},
-        "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [36, 6]}
+        "Prima Fila": {"Feriale": [42, 8], "Festivo": [50, 10]},
+        "Seconda Fila": {"Feriale": [38, 7], "Festivo": [42, 8]},
+        "Terza Fila": {"Feriale": [38, 7], "Festivo": [42, 8]},
+        "Quarta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]},
+        "Quinta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]},
+        "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [37, 6]}
     },
     "Altissima": {
         "Prima Fila": {"Feriale": [56, 10], "Festivo": [58, 12]},
@@ -183,6 +183,7 @@ TARIFFE = {
     }
 }
 
+# Allineamento extra aggiornato (Postazione Esterna a 32€/38€ come da foto)
 PREZZI_EXTRA = {
     "1 Lettino Extra": {"Feriale": 8, "Festivo": 10},
     "2 Lettini Extra": {"Feriale": 16, "Festivo": 20},
@@ -190,7 +191,7 @@ PREZZI_EXTRA = {
     "2 Asciugamani (Teli)": {"Feriale": 8, "Festivo": 10},
     "1 Lettino Extra, 1 Asciugamano (Telo)": {"Feriale": 12, "Festivo": 15},
     "2 Lettini Extra, 2 Asciugamani (Teli)": {"Feriale": 24, "Festivo": 30},
-    "Postazione Esterna": {"Feriale": 30, "Festivo": 36}
+    "Postazione Esterna": {"Feriale": 32, "Festivo": 38}
 }
 
 MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
@@ -344,7 +345,7 @@ def applica_azione_rapida(idx, widget_key):
     azione = st.session_state[widget_key]
     if azione != "⚡ Azione":
         df = carica_prenotazioni()
-        if not df.empty and idx in df.index:
+        if not df.empty fraud idx in df.index:
             if azione == "🔄 Libera e Subentra":
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
                 data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
@@ -460,7 +461,7 @@ for i, op in enumerate(OPERATORI_SPIAGGIA):
 if 'sb_operatore' not in st.session_state:
     st.session_state['sb_operatore'] = OPERATORI_SPIAGGIA[idx_op]
 
-operatore_attivo = st.selectbox("👤 Operatore Active (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
+operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
 
 df_clienti = carica_clienti()
@@ -546,6 +547,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 
                 risultati_filtrati = risultati[colonne_ordine].copy()
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
+                risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
@@ -572,9 +574,8 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 new_prezzo = float(edited_df.loc[idx, 'Prezzo_Giorno'])
                                 
                                 if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
-                                    d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
-                                    data_obj = pd.to_datetime(d_str).date()
-                                    extra_list = [x.strip() for x in new_extra.split(',')] if new_extra else []
+                                    data_obj = edited_df.loc[idx, 'Data'].date()
+                                    extra_list = [new_extra] if new_extra else []
                                     
                                     nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
                                     if str(edited_df.loc[idx, 'Incassato_da']) != "Ospite (Gratis)":
@@ -600,7 +601,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 edited_df.loc[idx, 'Stato'] = "Pagato"
 
                         stato_finale = edited_df.loc[idx, 'Stato']
-                        d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
+                        d_str = edited_df.loc[idx, 'Data'].strftime('%Y-%m-%d')
                         fila = edited_df.loc[idx, 'Fila']
                         omb = int(edited_df.loc[idx, 'Ombrellone'])
 
@@ -619,11 +620,11 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                     if st_es in ["Libero_Mat", "Libero_Pom"] or ("Mezza" in durata_corrente and "Mezza" in dur_es):
                                         continue
                                     else:
-                                        conflitto_reale = True
+                                        reale_conflitto = True
                                         nome_occ = str(o_row['Nome'])
                                         break
                                 
-                                if conflitto_reale:
+                                if reale_conflitto:
                                     st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
                                     has_overlap = True
                                     break
@@ -1030,7 +1031,7 @@ else:
                 numero_omb = i + 1
                 colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx, stato_omb = controlla_posto(numero_omb, nome_fila)
                 
-                # --- RIPRISTINO DEI VECCHI PUNTI DI RIFERIMENTO FISICI REALI ---
+                # --- CALCOLO ORIENTAMENTO ORIZZONTALE FISICO REALE RICHIESTO ---
                 etichetta = ""
                 if nome_fila == "Prima Fila":
                     if numero_omb <= 6: etichetta = "1ª Fila"
@@ -1226,7 +1227,7 @@ else:
                                 break
                         
                         if conflitto_reale:
-                            st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ} (Giornata Intera).")
+                            st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
                             has_overlap = True
                             break
 
