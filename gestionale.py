@@ -119,6 +119,7 @@ CAPIENZA_FILE = {
     "Sesta Fila (Altre)": 6
 }
 
+# Date per la stagione Alta Stagione A 2026 stabilite nel listino ufficiale
 STAGIONI_DATE = {
     "Media 1": [(date(2026, 5, 30), date(2026, 6, 12))],
     "Media 2": [(date(2026, 6, 13), date(2026, 6, 19))],
@@ -128,6 +129,7 @@ STAGIONI_DATE = {
     "Peak Season": [(date(2026, 8, 1), date(2026, 8, 23))]
 }
 
+# Festività ufficiali inserite nei controlli per bloccare le tariffe feriali errate
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
 TARIFFE = {
@@ -181,7 +183,6 @@ TARIFFE = {
     }
 }
 
-# --- ALLINEAMENTO EXTRA PRECISI DA LISTINO ---
 PREZZI_EXTRA = {
     "1 Lettino Extra": {"Feriale": 8, "Festivo": 10},
     "2 Lettini Extra": {"Feriale": 16, "Festivo": 20},
@@ -312,12 +313,9 @@ def forza_aggiornamento_listino_nuovo():
                 df['Data_Obj'] = pd.to_datetime(df['Data'], errors='coerce').dt.date
                 modificato = False
                 
-                inizio_check = date(2026, 6, 13)
-                fine_check = date(2026, 7, 3) 
-                
                 for idx, row in df.iterrows():
                     current_date = row['Data_Obj']
-                    if not pd.isna(current_date) and inizio_check <= current_date <= fine_check:
+                    if not pd.isna(current_date):
                         if str(row.get('Incassato_da', '')) != "Ospite (Gratis)":
                             ex_val = str(row.get('Extra', ''))
                             extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
@@ -342,9 +340,6 @@ def forza_aggiornamento_listino_nuovo():
 
 forza_aggiornamento_listino_nuovo()
 
-# ==========================================
-# ⚡ AZIONI RAPIDE DALLA MAPPA VISIVA
-# ==========================================
 def applica_azione_rapida(idx, widget_key):
     azione = st.session_state[widget_key]
     if azione != "⚡ Azione":
@@ -465,7 +460,7 @@ for i, op in enumerate(OPERATORI_SPIAGGIA):
 if 'sb_operatore' not in st.session_state:
     st.session_state['sb_operatore'] = OPERATORI_SPIAGGIA[idx_op]
 
-operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
+operatore_attivo = st.selectbox("👤 Operatore Active (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
 
 df_clienti = carica_clienti()
@@ -550,10 +545,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
                 
                 risultati_filtrati = risultati[colonne_ordine].copy()
-                
-                # PULIZIA DATE PER EVITARE CRASH
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
-                risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
                 edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
@@ -561,7 +553,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     edited_df['Data'] = pd.to_datetime(edited_df['Data'], errors='coerce')
                     edited_df = edited_df.dropna(subset=['Data'])
                     
-                    # --- AUTO RICALCOLO PREZZO DA RICERCA ---
                     for idx in edited_df.index:
                         try:
                             if idx in risultati.index:
@@ -581,8 +572,9 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 new_prezzo = float(edited_df.loc[idx, 'Prezzo_Giorno'])
                                 
                                 if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
-                                    data_obj = edited_df.loc[idx, 'Data'].date()
-                                    extra_list = [new_extra] if new_extra else []
+                                    d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
+                                    data_obj = pd.to_datetime(d_str).date()
+                                    extra_list = [x.strip() for x in new_extra.split(',')] if new_extra else []
                                     
                                     nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
                                     if str(edited_df.loc[idx, 'Incassato_da']) != "Ospite (Gratis)":
@@ -608,7 +600,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 edited_df.loc[idx, 'Stato'] = "Pagato"
 
                         stato_finale = edited_df.loc[idx, 'Stato']
-                        d_str = edited_df.loc[idx, 'Data'].strftime('%Y-%m-%d')
+                        d_str = pd.to_datetime(edited_df.loc[idx, 'Data']).strftime('%Y-%m-%d')
                         fila = edited_df.loc[idx, 'Fila']
                         omb = int(edited_df.loc[idx, 'Ombrellone'])
 
@@ -627,11 +619,11 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                     if st_es in ["Libero_Mat", "Libero_Pom"] or ("Mezza" in durata_corrente and "Mezza" in dur_es):
                                         continue
                                     else:
-                                        reale_conflitto = True
+                                        conflitto_reale = True
                                         nome_occ = str(o_row['Nome'])
                                         break
                                 
-                                if reale_conflitto:
+                                if conflitto_reale:
                                     st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
                                     has_overlap = True
                                     break
@@ -1038,17 +1030,29 @@ else:
                 numero_omb = i + 1
                 colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx, stato_omb = controlla_posto(numero_omb, nome_fila)
                 
+                # --- RIPRISTINO DEI VECCHI PUNTI DI RIFERIMENTO FISICI REALI ---
                 etichetta = ""
                 if nome_fila == "Prima Fila":
-                    if numero_omb <= 6: etichetta = "1ª Fila VIP"
-                    elif numero_omb <= 15: etichetta = "2ª e 3ª Fila"
-                    else: etichetta = "4ª Fila"
-                elif nome_fila == "Seconda Fila" or nome_fila == "Terza Fila":
-                    etichetta = "2ª e 3ª Fila"
+                    if numero_omb <= 6: etichetta = "1ª Fila"
+                    elif numero_omb <= 15: etichetta = "Fisicamente in 2ª Fila"
+                    else: etichetta = "Fisicamente in 3ª Fila"
+                elif nome_fila == "Seconda Fila":
+                    if numero_omb <= 6: etichetta = "2ª Fila"
+                    elif numero_omb <= 15: etichetta = "Fisicamente in 3ª Fila"
+                    else: etichetta = "Fisicamente in 4ª Fila"
+                elif nome_fila == "Terza Fila":
+                    if numero_omb <= 6: etichetta = "3ª Fila"
+                    else: etichetta = "Fisicamente in 4ª Fila"
                 elif nome_fila == "Quarta Fila":
-                    etichetta = "4ª Fila"
+                    if numero_omb <= 6: etichetta = "4ª Fila"
+                    else: etichetta = "Fisicamente in 5ª Fila"
+                elif nome_fila == "Quinta Fila":
+                    if numero_omb <= 4: etichetta = "5ª Fila"
+                    else: etichetta = "Fisicamente in 6ª Fila"
+                elif nome_fila == "Sesta Fila (Altre)":
+                    etichetta = "6ª Fila"
                 else:
-                    etichetta = "Altre File"
+                    etichetta = nome_fila
                 
                 box_html = f"<div style='background-color: {colore_box}; padding: 6px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 10px; font-weight: normal; color: rgba(255,255,255,0.8); display: block;'>{etichetta}</span><span style='font-size: 16px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
                 
@@ -1137,7 +1141,6 @@ else:
         
         df_range_edit = df_range[colonne_tabella].copy()
         
-        # PULIZIA DATE PER EVITARE CRASH TABELLA
         df_range_edit['Data'] = pd.to_datetime(df_range_edit['Data'], errors='coerce')
         df_range_edit = df_range_edit.dropna(subset=['Data'])
         df_range_edit['Data'] = df_range_edit['Data'].dt.date
