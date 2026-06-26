@@ -119,7 +119,6 @@ CAPIENZA_FILE = {
     "Sesta Fila (Altre)": 6
 }
 
-# Intervalli stagionali modificati per attivare la nuova Alta B da domani 27 Giugno
 STAGIONI_DATE = {
     "Media 1": [(date(2026, 5, 30), date(2026, 6, 12))],
     "Media 2": [(date(2026, 6, 13), date(2026, 6, 19))],
@@ -131,7 +130,6 @@ STAGIONI_DATE = {
 
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
-# Tariffe riallineate perfettamente alla foto del listino Alta B
 TARIFFE = {
     "Media 1": {
         "Prima Fila": {"Feriale": [30, 7], "Festivo": [33, 9]},
@@ -183,7 +181,6 @@ TARIFFE = {
     }
 }
 
-# Allineamento extra aggiornato (Postazione Esterna a 32€/38€ come da foto)
 PREZZI_EXTRA = {
     "1 Lettino Extra": {"Feriale": 8, "Festivo": 10},
     "2 Lettini Extra": {"Feriale": 16, "Festivo": 20},
@@ -345,7 +342,7 @@ def applica_azione_rapida(idx, widget_key):
     azione = st.session_state[widget_key]
     if azione != "⚡ Azione":
         df = carica_prenotazioni()
-        if not df.empty fraud idx in df.index:
+        if not df.empty and idx in df.index:
             if azione == "🔄 Libera e Subentra":
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
                 data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
@@ -1031,7 +1028,6 @@ else:
                 numero_omb = i + 1
                 colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx, stato_omb = controlla_posto(numero_omb, nome_fila)
                 
-                # --- CALCOLO ORIENTAMENTO ORIZZONTALE FISICO REALE RICHIESTO ---
                 etichetta = ""
                 if nome_fila == "Prima Fila":
                     if numero_omb <= 6: etichetta = "1ª Fila"
@@ -1156,7 +1152,6 @@ else:
             edited_range['Data'] = pd.to_datetime(edited_range['Data'], errors='coerce')
             edited_range = edited_range.dropna(subset=['Data'])
             
-            # --- AUTO RICALCOLO PREZZO DA TABELLA INTELLIGENTE ---
             for idx in edited_range.index:
                 try:
                     if idx in df_range.index:
@@ -1227,7 +1222,7 @@ else:
                                 break
                         
                         if conflitto_reale:
-                            st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
+                            st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ} (Giornata Intera).")
                             has_overlap = True
                             break
 
