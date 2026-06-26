@@ -327,16 +327,26 @@ def forza_aggiornamento_listino_nuovo():
                 for idx, row in df.iterrows():
                     current_date = row['Data_Obj']
                     if not pd.isna(current_date) and inizio_check <= current_date <= fine_check:
-                        if row['Incassato_da'] != "Ospite (Gratis)":
-                            prezzo_corretto = calcola_prezzo_automatico(current_date, row['Fila'], row['Persone'], row['Durata'], [])
-                            if row['Prezzo_Giorno'] != prezzo_corretto and row['Sconto'] == 0.0:
-                                df.loc[idx, 'Prezzo_Giorno'] = prezzo_corretto
+                        if str(row.get('Incassato_da', '')) != "Ospite (Gratis)":
+                            # LEZIONCINA PER IL FANTASMA: ORA SA LEGGERE ANCHE GLI EXTRA!
+                            ex_val = str(row.get('Extra', ''))
+                            extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
+                            
+                            prezzo_corretto = calcola_prezzo_automatico(
+                                current_date, 
+                                str(row.get('Fila', 'Prima Fila')), 
+                                int(row.get('Persone', 2)), 
+                                str(row.get('Durata', 'Giornata Intera')), 
+                                extra_list
+                            )
+                            
+                            if float(row.get('Prezzo_Giorno', 0.0)) != float(prezzo_corretto) and float(row.get('Sconto', 0.0)) == 0.0:
+                                df.loc[idx, 'Prezzo_Giorno'] = float(prezzo_corretto)
                                 modificato = True
                                 
                 if modificato:
                     df = df.drop(columns=['Data_Obj'], errors='ignore')
                     df.to_csv(FILE_PRENOTAZIONI, index=False)
-                    backup_istantaneo_telegram("Allineamento automatico tariffe nuove alta stagione")
         except Exception:
             pass
 
@@ -353,7 +363,12 @@ def applica_azione_rapida(idx, widget_key):
             if azione == "🔄 Libera e Subentra":
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
                 data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
-                prezzo_mezza = calcola_prezzo_automatico(data_obj, df.loc[idx, 'Fila'], df.loc[idx, 'Persone'], "Mezza Giornata (fino 13 / da 15.30)", [])
+                
+                # Ricalcoliamo tenendo conto se aveva già un lettino prima del subentro
+                ex_val = str(df.loc[idx, 'Extra'])
+                extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
+                
+                prezzo_mezza = calcola_prezzo_automatico(data_obj, df.loc[idx, 'Fila'], df.loc[idx, 'Persone'], "Mezza Giornata (fino 13 / da 15.30)", extra_list)
                 df.loc[idx, 'Prezzo_Giorno'] = prezzo_mezza
                 
                 nota_prec = str(df.loc[idx, 'Note']) if pd.notna(df.loc[idx, 'Note']) else ""
@@ -705,7 +720,6 @@ with col_p:
 with col_d:
     input_durata = st.sidebar.selectbox("Durata", ["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"])
 
-# I TASTI DEGLI EXTRA SONO PIU' CHIARI ANCHE QUI:
 input_extra = st.sidebar.multiselect("🏖️ Risorse Aggiuntive Libere (per postazione)", list(PREZZI_EXTRA.keys()))
 input_note = st.sidebar.text_input("📝 Note / Memo (es. Ospite, Omaggio, Cagnolino)", key=f"form_note_{rk}").strip()
 
@@ -1108,7 +1122,7 @@ else:
 
     else:
         data_in_ita = data_inizio_vis.strftime("%d/%m")
-        data_fin_ita = data_fine_vis.strftime("%d/%m")
+        data_fin_ita = data_fin_vis.strftime("%d/%m")
         st.header(f"🗓️ Radar Disponibilità Continua ({data_in_ita} - {data_fin_ita})")
         st.info(f"💡 Visualizzazione per un periodo di **{giorni_totali_vis} giorni**. I posti **VERDI** sono liberi per tutto l'arco di tempo. I posti **ROSSI** sono occupati per almeno un giorno in questo periodo.")
         st.divider()
@@ -1153,7 +1167,7 @@ else:
         
         edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
         
-        if st.button("💾 Salva Modifiche e Ricalcola Prezzi in Automatico", type="primary"):
+        if st.button("💾 Salva Modifiche e Ricalcola Prezzi in Automatico", type="primary", key="btn_salva_oggi"):
             edited_range = edited_range.dropna(subset=['Data'])
             edited_range = edited_range[pd.notnull(pd.to_datetime(edited_range['Data'], errors='coerce'))]
             
