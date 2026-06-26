@@ -99,10 +99,6 @@ def invia_notifica_telegram(messaggio):
     except Exception:
         return False
 
-# ==========================================
-# ⚙️ FUNZIONI DI PULIZIA E RICERCA INTELLIGENTE
-# ==========================================
-
 def normalizza_tel(t):
     if not t or pd.isna(t): return ""
     t = str(t).strip().replace(" ", "").replace("+", "")
@@ -111,7 +107,7 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE TARIFFE E MAPPA STRUTTURATA (Senza Spiaggia Libera)
+# ⚙️ CONFIGURAZIONE TARIFFE E MAPPA STRUTTURATA
 # ==========================================
 
 CAPIENZA_FILE = {
@@ -185,13 +181,15 @@ TARIFFE = {
     }
 }
 
-# --- MENU EXTRA PIÙ CHIARI ---
+# --- ALLINEAMENTO EXTRA PRECISI DA LISTINO ---
 PREZZI_EXTRA = {
-    "1 Lettino Extra": 12,
-    "2 Lettini Extra": 24,
-    "1 Asciugamano (Telo)": 5,
-    "2 Asciugamani (Teli)": 10,
-    "Postazione Esterna": 45
+    "1 Lettino Extra": {"Feriale": 8, "Festivo": 10},
+    "2 Lettini Extra": {"Feriale": 16, "Festivo": 20},
+    "1 Asciugamano (Telo)": {"Feriale": 4, "Festivo": 5},
+    "2 Asciugamani (Teli)": {"Feriale": 8, "Festivo": 10},
+    "1 Lettino Extra, 1 Asciugamano (Telo)": {"Feriale": 12, "Festivo": 15},
+    "2 Lettini Extra, 2 Asciugamani (Teli)": {"Feriale": 24, "Festivo": 30},
+    "Postazione Esterna": {"Feriale": 30, "Festivo": 36}
 }
 
 MESI_ITA = ["", "Gennaio", "Febbraio", "Marzo", "Aprile", "Maggio", "Giugno", "Luglio", "Agosto", "Settembre", "Ottobre", "Novembre", "Dicembre"]
@@ -216,16 +214,7 @@ CONFIGURAZIONE_COLONNE = {
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
     "Sconto": st.column_config.NumberColumn("Sconto (€)", step=1.0),
     "Persone": st.column_config.NumberColumn("Persone", min_value=1, step=1),
-    "Extra": st.column_config.SelectboxColumn("Extra", options=[
-        "", 
-        "1 Lettino Extra", 
-        "2 Lettini Extra", 
-        "1 Asciugamano (Telo)", 
-        "2 Asciugamani (Teli)", 
-        "1 Lettino Extra, 1 Asciugamano (Telo)", 
-        "2 Lettini Extra, 2 Asciugamani (Teli)",
-        "Postazione Esterna"
-    ]),
+    "Extra": st.column_config.SelectboxColumn("Extra", options=[""] + list(PREZZI_EXTRA.keys())),
     "Note": st.column_config.TextColumn("Note / Memo"),
     "Operatore": st.column_config.SelectboxColumn("Operatore", options=OPERATORI_SPIAGGIA),
     "Incassato_da": st.column_config.SelectboxColumn("Incassato da", options=OPZIONI_INCASSO)
@@ -253,6 +242,7 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     prezzo_base = TARIFFE[stagione][fila][tipo_tariffa][0]
     suppl_persona = TARIFFE[stagione][fila][tipo_tariffa][1]
     
+    # ELIMINATO QUALSIASI ARROTONDAMENTO STRANO SUI PREZZI MEZZA GIORNATA
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
         prezzo_base = prezzo_base * 0.70
     elif durata == "Solo 1 Persona (Postazione Ridotta)":
@@ -261,9 +251,12 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     totale = prezzo_base
     if persone > 3:
         totale += suppl_persona
+        
     for ex in extra_scelti:
-        totale += PREZZI_EXTRA.get(ex, 0)
-    return totale
+        if ex in PREZZI_EXTRA:
+            totale += PREZZI_EXTRA[ex][tipo_tariffa]
+            
+    return float(totale)
 
 def carica_clienti():
     if os.path.exists(FILE_CLIENTI):
@@ -278,7 +271,6 @@ def carica_prenotazioni():
         try:
             df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
             
-            # --- SCUDO PROTETTIVO: PULIZIA COLONNE ---
             if "Hotel" not in df.columns: df["Hotel"] = ""
             if "Persone" not in df.columns: df["Persone"] = 2
             if "Durata" not in df.columns: df["Durata"] = "Giornata Intera"
@@ -321,14 +313,11 @@ def forza_aggiornamento_listino_nuovo():
                 df['Data_Obj'] = pd.to_datetime(df['Data'], errors='coerce').dt.date
                 modificato = False
                 
-                inizio_check = date(2026, 6, 13)
-                fine_check = date(2026, 7, 3) 
-                
+                # Allineamento automatico dei record salvati con il nuovo cervello matematico
                 for idx, row in df.iterrows():
                     current_date = row['Data_Obj']
-                    if not pd.isna(current_date) and inizio_check <= current_date <= fine_check:
+                    if not pd.isna(current_date):
                         if str(row.get('Incassato_da', '')) != "Ospite (Gratis)":
-                            # LEZIONCINA PER IL FANTASMA: ORA SA LEGGERE ANCHE GLI EXTRA!
                             ex_val = str(row.get('Extra', ''))
                             extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
                             
@@ -364,7 +353,6 @@ def applica_azione_rapida(idx, widget_key):
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
                 data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
                 
-                # Ricalcoliamo tenendo conto se aveva già un lettino prima del subentro
                 ex_val = str(df.loc[idx, 'Extra'])
                 extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
                 
@@ -441,12 +429,12 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
                     is_subentro = True
 
             durata_assegnata = "Mezza Giornata (fino 13 / da 15.30)" if is_subentro else "Giornata Intera"
-            prezzo = calcola_prezzo_automatico(data_obj, fila, 2, durata_assegnata, [])
+            prezzo = calcola_prezzo_automatico(data_obj, fila, 2, duration_assegnata, [])
             stato_automatico = "Confermato" if is_future else "Presente"
             
             nuova_p = pd.DataFrame([{
                 "Data": data_str, "Fila": fila, "Ombrellone": int(omb),
-                "Nome": nome_cliente, "Telefono": "", "Stato": stato_automatico,
+                "Nome": nome_cliente, "Telephone": "", "Stato": stato_automatico,
                 "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
                 "Persone": 2, "Durata": durata_assegnata, "Extra": "",
                 "Note": "Subentro pomeridiano" if is_subentro else "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
@@ -466,7 +454,6 @@ st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
 
-# --- RICONOSCIMENTO AUTOMATICO OPERATORE ---
 op_param = st.query_params.get("op", "") if hasattr(st, "query_params") else ""
 idx_op = 0
 for i, op in enumerate(OPERATORI_SPIAGGIA):
@@ -558,7 +545,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             risultati = df_pren[mask_nome | mask_tel | mask_hotel].sort_values(by="Data")
             
             if not risultati.empty:
-                st.success(f"Trovate {len(risultati)} prenotazioni. Fai doppio clic sulle celle per modificarle!")
+                st.success(f"Trovate {len(ric勇ati)} prenotazioni. Fai doppio clic sulle celle per modificarle!")
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
                 
                 risultati_filtrati = risultati[colonne_ordine].copy()
@@ -570,7 +557,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     edited_df = edited_df.dropna(subset=['Data'])
                     edited_df = edited_df[pd.notnull(pd.to_datetime(edited_df['Data'], errors='coerce'))]
                     
-                    # --- AUTO RICALCOLO PREZZO DA RICERCA INTELLIGENTE ---
+                    # --- APPLICAZIONE CALCOLO COMPLETO GIORNO PER GIORNO ---
                     for idx in edited_df.index:
                         try:
                             if idx in risultati.index:
@@ -628,7 +615,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                                    (df_pren_temp['Ombrellone'] == omb) &
                                                    (df_pren_temp['Stato'] != "Libero")]
                             if not overlap.empty:
-                                conflitto_reale = False
+                                reale_conflitto = False
                                 nome_occ = ""
                                 durata_corrente = str(edited_df.loc[idx, 'Durata'])
                                 for _, o_row in overlap.iterrows():
@@ -637,12 +624,12 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                     if st_es in ["Libero_Mat", "Libero_Pom"] or ("Mezza" in durata_corrente and "Mezza" in dur_es):
                                         continue
                                     else:
-                                        conflitto_reale = True
+                                        reale_conflitto = True
                                         nome_occ = str(o_row['Nome'])
                                         break
                                 
-                                if conflitto_reale:
-                                    st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ} (Giornata Intera).")
+                                if reale_conflitto:
+                                    st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
                                     has_overlap = True
                                     break
 
@@ -728,12 +715,19 @@ st.sidebar.markdown("---")
 input_stato = st.sidebar.selectbox("Stato Postazione", list(STATI_MAP.keys()))
 input_incassato = st.sidebar.selectbox("💰 Pagamento incassato da:", OPZIONI_INCASSO, help="Seleziona chi ha preso i soldi se il cliente ha già pagato")
 
+# --- CERVELLO INTERAMENTE RIGENERATO: CALCOLO GIORNO PER GIORNO COMPLETO ---
 prezzo_consigliato_totale = 0.0
 if len(date_selezionate) > 0:
-    prezzo_unitario = calcola_prezzo_automatico(date_selezionate[0], input_fila, input_persone, input_durata, input_extra)
-    prezzo_consigliato_totale = prezzo_unitario * quantita_postazioni
+    data_inizio_calc = date_selezionate[0]
+    data_fine_calc = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio_calc
+    giorni_totali_calc = (data_fine_calc - data_inizio_calc).days + 1
     
-input_prezzo = st.sidebar.number_input("Prezzo Giornaliero TOTALE (€)", min_value=0.0, value=float(prezzo_consigliato_totale), step=1.0)
+    for i_g in range(giorni_totali_calc):
+        giorno_calc = data_inizio_calc + timedelta(days=i_g)
+        pz_giorno = calcola_prezzo_automatico(giorno_calc, input_fila, input_persone, input_durata, input_extra)
+        prezzo_consigliato_totale += (pz_giorno * quantita_postazioni)
+    
+input_prezzo = st.sidebar.number_input("Prezzo TOTALE (Tutti i giorni e postazioni) (€)", min_value=0.0, value=float(prezzo_consigliato_totale), step=1.0)
 
 st.sidebar.markdown("---")
 tipo_salvataggio = st.sidebar.radio("Se la postazione risulta già occupata:", ["Blocca (Errore)", "Sostituisci (Cancella il vecchio)", "Subentro (Tieni il vecchio per l'incasso)"], help="Scegli Subentro per far pagare due clienti sullo stesso ombrellone nello stesso giorno")
@@ -817,7 +811,11 @@ if submit:
                     giorno_corrente_obj = data_inizio + timedelta(days=i)
                     giorno_corrente_str = giorno_corrente_obj.strftime("%Y-%m-%d")
                     prezzo_giorno_unitario = calcola_prezzo_automatico(giorno_corrente_obj, input_fila, input_persone, input_durata, input_extra)
-                    prezzo_finale_unitario = input_prezzo / quantita_postazioni if input_prezzo != prezzo_consigliato_totale else prezzo_giorno_unitario
+                    
+                    if input_prezzo == prezzo_consigliato_totale:
+                        prezzo_finale_unitario = prezzo_giorno_unitario
+                    else:
+                        prezzo_finale_unitario = input_prezzo / (quantita_postazioni * giorni_totali)
                     
                     if input_incassato == "Ospite (Gratis)":
                         prezzo_finale_unitario = 0.0
@@ -852,7 +850,7 @@ if submit:
                 st.session_state['reset_form'] += 1
                 st.rerun()
 
-# --- 💾 SISTEMA SALVAVITA (BACKUP MANUALE) ---
+# --- 💾 SISTEMA SALVAVITA ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("💾 Backup Locale")
 
@@ -882,7 +880,7 @@ if file_caricato is not None:
 
 st.sidebar.markdown("---")
 
-# --- AREA DEMO E NOTIFICHE ---
+# --- AREA NOTIFICHE WHATSAPP ---
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
 
 operatore_msg = st.sidebar.selectbox("👤 Inviato da:", OPERATORI_SPIAGGIA, index=OPERATORI_SPIAGGIA.index(st.session_state.get('sb_operatore', OPERATORI_SPIAGGIA[0])))
@@ -941,7 +939,7 @@ if nome_wa and len(date_wa) > 0:
 elif nome_wa and len(date_wa) == 0:
     st.sidebar.warning("⚠️ Seleziona le date per generare il messaggio.")
 
-# --- MAPPA VISIVA E TABELLA INFERIORE INTERATTIVA ---
+# --- MAPPA VISIVA E TABELLA INTERATTIVA ---
 data_visiva = st.date_input("📅 Mappa Visiva: Seleziona SINGOLA DATA (per i clienti) o UN PERIODO (per cercare disponibilità fisse):", [], format="DD/MM/YYYY")
 
 if len(data_visiva) == 0:
@@ -1040,38 +1038,15 @@ else:
                 
                 etichetta = ""
                 if nome_fila == "Prima Fila":
-                    if numero_omb <= 6:
-                        etichetta = "1ª Fila"
-                    elif numero_omb <= 15:
-                        etichetta = "Fisicamente in 2ª Fila"
-                    else:
-                        etichetta = "Fisicamente in 3ª Fila"
-                elif nome_fila == "Seconda Fila":
-                    if numero_omb <= 6:
-                        etichetta = "2ª Fila"
-                    elif numero_omb <= 15:
-                        etichetta = "Fisicamente in 3ª Fila"
-                    else:
-                        etichetta = "Fisicamente in 4ª Fila"
-                elif nome_fila == "Terza Fila":
-                    if numero_omb <= 6:
-                        etichetta = "3ª Fila"
-                    else:
-                        etichetta = "Fisicamente in 4ª Fila"
+                    if numero_omb <= 6: etichetta = "1ª Fila VIP"
+                    elif numero_omb <= 15: etichetta = "2ª e 3ª Fila"
+                    else: etichetta = "4ª Fila"
+                elif nome_fila == "Seconda Fila" or nome_fila == "Terza Fila":
+                    etichetta = "2ª e 3ª Fila"
                 elif nome_fila == "Quarta Fila":
-                    if numero_omb <= 6:
-                        etichetta = "4ª Fila"
-                    else:
-                        etichetta = "Fisicamente in 5ª Fila"
-                elif nome_fila == "Quinta Fila":
-                    if numero_omb <= 4:
-                        etichetta = "5ª Fila"
-                    else:
-                        etichetta = "Fisicamente in 6ª Fila"
-                elif nome_fila == "Sesta Fila (Altre)":
-                    etichetta = "6ª Fila"
+                    etichetta = "4ª Fila"
                 else:
-                    etichetta = nome_fila
+                    etichetta = "Altre File"
                 
                 box_html = f"<div style='background-color: {colore_box}; padding: 6px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 10px; font-weight: normal; color: rgba(255,255,255,0.8); display: block;'>{etichetta}</span><span style='font-size: 16px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'>{badge_rivend}<span style='font-size: 11px; font-weight: bold; display: block; overflow: hidden; text-overflow: ellipsis; white-space: nowrap;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span>{hotel_str}</div>"
                 
@@ -1122,7 +1097,7 @@ else:
 
     else:
         data_in_ita = data_inizio_vis.strftime("%d/%m")
-        data_fin_ita = data_fin_vis.strftime("%d/%m")
+        data_fin_ita = data_fine_vis.strftime("%d/%m")
         st.header(f"🗓️ Radar Disponibilità Continua ({data_in_ita} - {data_fin_ita})")
         st.info(f"💡 Visualizzazione per un periodo di **{giorni_totali_vis} giorni**. I posti **VERDI** sono liberi per tutto l'arco di tempo. I posti **ROSSI** sono occupati per almeno un giorno in questo periodo.")
         st.divider()
@@ -1152,7 +1127,7 @@ else:
         if giorni_totali_vis > 1:
             st.warning("⚠️ Stai visualizzando e modificando i dati di PIÙ GIORNI contemporaneamente.")
         else:
-            st.info("💡 Fai doppio clic sulle celle per modificare.\n\n✨ **MAGIA DEI PREZZI:** Se aggiungi Extra (Lettini/Teli) o cambi la Durata/Persone, NON SCRIVERE IL PREZZO A MANO! Scegli l'opzione dalla tendina e clicca il tasto rosso qui sotto: il computer farà il calcolo esatto al posto tuo nell'istante in cui salva!")
+            st.info("💡 Fai doppio clic sulle celle per cambiare Stato, Operatore o Note.\n\n✨ **MAGIA DEI PREZZI:** Se aggiungi Extra (Lettini/Teli) o cambi la Durata/Persone, NON SCRIVERE IL PREZZO A MANO! Scegli l'opzione dalla tendina e clicca il tasto rosso qui sotto: il computer farà il calcolo esatto al posto tuo nell'istante in cui salva!")
         
         colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
         if 'Hotel' in df_range.columns: 
@@ -1171,7 +1146,7 @@ else:
             edited_range = edited_range.dropna(subset=['Data'])
             edited_range = edited_range[pd.notnull(pd.to_datetime(edited_range['Data'], errors='coerce'))]
             
-            # --- AUTO RICALCOLO PREZZO DA TABELLA INTELLIGENTE ---
+            # --- AUTO RICALCOLO PREZZO CON LOGICA DINAMICA AL CENTESIMO ---
             for idx in edited_range.index:
                 try:
                     if idx in df_range.index:
@@ -1193,7 +1168,7 @@ else:
                         if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
                             d_str = pd.to_datetime(edited_range.loc[idx, 'Data']).strftime('%Y-%m-%d')
                             data_obj = pd.to_datetime(d_str).date()
-                            extra_list = [x.strip() for x in new_extra.split(',')] if new_extra else []
+                            extra_list = [new_extra] if new_extra else []
                             
                             nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
                             if str(edited_range.loc[idx, 'Incassato_da']) != "Ospite (Gratis)":
@@ -1258,38 +1233,39 @@ else:
     else:
         st.info("Nessuna prenotazione registrata in questo periodo.")
 
-    # --- 📊 REPORT DI FINE GIORNATA ---
-    st.divider()
-    st.header("📊 Report di Fine Giornata")
-    st.info("Questo è il resoconto completo. I clienti in 'Subentro' si sommano automaticamente per calcolare l'incasso reale. Puoi stampare questa pagina premendo Ctrl+P (o Cmd+P su Mac).")
+# --- 📊 REPORT DI FINE GIORNATA ---
+st.sidebar.markdown("---")
+st.divider()
+st.header("📊 Report di Fine Giornata")
+st.info("Questo è il resoconto completo. I clienti in 'Subentro' si sommano automaticamente per calcolare l'incasso reale. Puoi stampare questa pagina premendo Ctrl+P (o Cmd+P su Mac).")
 
-    if not df_range.empty:
-        incasso_totale = float(pd.to_numeric(df_range['Prezzo_Giorno'], errors='coerce').fillna(0).sum())
-        totale_persone = int(pd.to_numeric(df_range['Persone'], errors='coerce').fillna(0).sum())
-        totale_sconti = float(pd.to_numeric(df_range['Sconto'], errors='coerce').fillna(0).sum())
-        
-        col_r1, col_r2, col_r3 = st.columns(3)
-        col_r1.metric("💶 Incasso Netto Giornaliero", f"€ {incasso_totale:.2f}")
-        col_r2.metric("📉 Sconti Applicati Oggi", f"€ {totale_sconti:.2f}")
-        col_r3.metric("👥 Totale Persone Registrate", f"{totale_persone}")
-        
-        colonne_report = ["Data", "Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
-        df_export = df_range[colonne_report].copy()
-        
-        df_export['Fila'] = pd.Categorical(df_export['Fila'], categories=list(CAPIENZA_FILE.keys()), ordered=True)
-        df_export = df_export.sort_values(by=["Data", "Fila", "Ombrellone"])
-        df_export['Fila'] = df_export['Fila'].astype(str)
-        
-        df_export['Data'] = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
-        st.dataframe(df_export, use_container_width=True)
-        
-        csv_report = df_export.to_csv(index=False, sep=';').encode('utf-8')
-        st.download_button(
-            label="⬇️ Scarica Report in Excel/CSV",
-            data=csv_report,
-            file_name=f"Report_Spiaggia_{data_inizio_vis.strftime('%d-%m-%Y')}.csv",
-            mime="text/csv",
-            type="primary"
-        )
-    else:
-        st.warning("Nessuna prenotazione da calcolare per questo report.")
+if not df_range.empty:
+    incasso_totale = float(pd.to_numeric(df_range['Prezzo_Giorno'], errors='coerce').fillna(0).sum())
+    totale_persone = int(pd.to_numeric(df_range['Persone'], errors='coerce').fillna(0).sum())
+    totale_sconti = float(pd.to_numeric(df_range['Sconto'], errors='coerce').fillna(0).sum())
+    
+    col_r1, col_r2, col_r3 = st.columns(3)
+    col_r1.metric("💶 Incasso Netto Giornaliero", f"€ {incasso_totale:.2f}")
+    col_r2.metric("📉 Sconti Applicati Oggi", f"€ {totale_sconti:.2f}")
+    col_r3.metric("👥 Totale Persone Registrate", f"{totale_persone}")
+    
+    colonne_report = ["Data", "Fila", "Ombrellone", "Nome", "Stato", "Prezzo_Giorno", "Sconto", "Incassato_da", "Operatore", "Note"]
+    df_export = df_range[colonne_report].copy()
+    
+    df_export['Fila'] = pd.Categorical(df_export['Fila'], categories=list(CAPIENZA_FILE.keys()), ordered=True)
+    df_export = df_export.sort_values(by=["Data", "Fila", "Ombrellone"])
+    df_export['Fila'] = df_export['Fila'].astype(str)
+    
+    df_export['Data'] = pd.to_datetime(df_export['Data']).dt.strftime('%d/%m/%Y')
+    st.dataframe(df_export, use_container_width=True)
+    
+    csv_report = df_export.to_csv(index=False, sep=';').encode('utf-8')
+    st.download_button(
+        label="⬇️ Scarica Report in Excel/CSV",
+        data=csv_report,
+        file_name=f"Report_Spiaggia_{data_inizio_vis.strftime('%d-%m-%Y')}.csv",
+        mime="text/csv",
+        type="primary"
+    )
+else:
+    st.warning("Nessuna prenotazione da calcolare per questo report.")
