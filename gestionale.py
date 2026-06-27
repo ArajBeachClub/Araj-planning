@@ -113,7 +113,7 @@ def normalizza_tel(t):
 CAPIENZA_FILE = {
     "Prima Fila": 17,
     "Seconda Fila": 17,
-    "Terza Fila": 10,
+    "Terza Fila": 11, # Capienza aggiornata da 10 a 11 come richiesto
     "Quarta Fila": 10,
     "Quinta Fila": 7,
     "Sesta Fila (Altre)": 6
@@ -302,41 +302,6 @@ def carica_prenotazioni():
             pass
             
     return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
-
-def forza_aggiornamento_listino_nuovo():
-    if os.path.exists(FILE_PRENOTAZIONI):
-        try:
-            df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
-            if not df.empty:
-                df['Data_Obj'] = pd.to_datetime(df['Data'], errors='coerce').dt.date
-                modificato = False
-                
-                for idx, row in df.iterrows():
-                    current_date = row['Data_Obj']
-                    if not pd.isna(current_date):
-                        if str(row.get('Incassato_da', '')) != "Ospite (Gratis)":
-                            ex_val = str(row.get('Extra', ''))
-                            extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
-                            
-                            prezzo_corretto = calcola_prezzo_automatico(
-                                current_date, 
-                                str(row.get('Fila', 'Prima Fila')), 
-                                int(row.get('Persone', 2)), 
-                                str(row.get('Durata', 'Giornata Intera')), 
-                                extra_list
-                            )
-                            
-                            if float(row.get('Prezzo_Giorno', 0.0)) != float(prezzo_corretto) and float(row.get('Sconto', 0.0)) == 0.0:
-                                df.loc[idx, 'Prezzo_Giorno'] = float(prezzo_corretto)
-                                modificato = True
-                                
-                if modificato:
-                    df = df.drop(columns=['Data_Obj'], errors='ignore')
-                    df.to_csv(FILE_PRENOTAZIONI, index=False)
-        except Exception:
-            pass
-
-forza_aggiornamento_listino_nuovo()
 
 def applica_azione_rapida(idx, widget_key):
     azione = st.session_state[widget_key]
@@ -961,14 +926,6 @@ else:
             st.radio("⚙️ Cosa succede quando scrivi in un quadratino verde?", 
                      ["⚡ Salva Subito (Clienti in Spiaggia)", "⬅️ Precompila a Sinistra (Nuove Prenotazioni)"], 
                      horizontal=True, key="map_mode")
-        with col_t2:
-            st.markdown("""
-            <div style="text-align: right; margin-bottom: 10px;">
-                <button onclick="window.parent.print(); window.print();" style="background-color: #28a745; color: white; padding: 10px 20px; border: none; border-radius: 5px; cursor: pointer; font-size: 16px; font-weight: bold; box-shadow: 0 4px 6px rgba(0,0,0,0.1);">
-                    🖨️ Stampa Planning
-                </button>
-            </div>
-            """, unsafe_allow_html=True)
             
         st.divider()
 
@@ -1028,15 +985,15 @@ else:
                 numero_omb = i + 1
                 colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx, stato_omb = controlla_posto(numero_omb, nome_fila)
                 
+                # --- CALCOLO ORIENTAMENTO ORIZZONTALE FISICO REALE RICHIESTO ---
                 etichetta = ""
                 if nome_fila == "Prima Fila":
                     if numero_omb <= 6: etichetta = "1ª Fila"
-                    elif numero_omb <= 15: etichetta = "Fisicamente in 2ª Fila"
+                    elif numero_omb <= 16: etichetta = "Fisicamente in 2ª Fila"
                     else: etichetta = "Fisicamente in 3ª Fila"
                 elif nome_fila == "Seconda Fila":
-                    if numero_omb <= 6: etichetta = "2ª Fila"
-                    elif numero_omb <= 15: etichetta = "Fisicamente in 3ª Fila"
-                    else: etichetta = "Fisicamente in 4ª Fila"
+                    if numero_omb <= 16: etichetta = "2ª Fila"
+                    else: etichetta = "Fisicamente in 3ª Fila"
                 elif nome_fila == "Terza Fila":
                     if numero_omb <= 6: etichetta = "3ª Fila"
                     else: etichetta = "Fisicamente in 4ª Fila"
@@ -1152,6 +1109,7 @@ else:
             edited_range['Data'] = pd.to_datetime(edited_range['Data'], errors='coerce')
             edited_range = edited_range.dropna(subset=['Data'])
             
+            # --- AUTO RICALCOLO PREZZO DA TABELLA INTELLIGENTE ---
             for idx in edited_range.index:
                 try:
                     if idx in df_range.index:
