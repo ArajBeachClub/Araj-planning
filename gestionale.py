@@ -113,7 +113,7 @@ def normalizza_tel(t):
 CAPIENZA_FILE = {
     "Prima Fila": 17,
     "Seconda Fila": 17,
-    "Terza Fila": 12, # Aggiornato a 12 ombrelloni totali
+    "Terza Fila": 12,
     "Quarta Fila": 10,
     "Quinta Fila": 7,
     "Sesta Fila (Altre)": 6
@@ -303,41 +303,6 @@ def carica_prenotazioni():
             
     return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
 
-def forza_aggiornamento_listino_nuovo():
-    if os.path.exists(FILE_PRENOTAZIONI):
-        try:
-            df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
-            if not df.empty:
-                df['Data_Obj'] = pd.to_datetime(df['Data'], errors='coerce').dt.date
-                modificato = False
-                
-                for idx, row in df.iterrows():
-                    current_date = row['Data_Obj']
-                    if not pd.isna(current_date):
-                        if str(row.get('Incassato_da', '')) != "Ospite (Gratis)":
-                            ex_val = str(row.get('Extra', ''))
-                            extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
-                            
-                            prezzo_corretto = calcola_prezzo_automatico(
-                                current_date, 
-                                str(row.get('Fila', 'Prima Fila')), 
-                                int(row.get('Persone', 2)), 
-                                str(row.get('Durata', 'Giornata Intera')), 
-                                extra_list
-                            )
-                            
-                            if float(row.get('Prezzo_Giorno', 0.0)) != float(prezzo_corretto) and float(row.get('Sconto', 0.0)) == 0.0:
-                                df.loc[idx, 'Prezzo_Giorno'] = float(prezzo_corretto)
-                                modificato = True
-                                
-                if modificato:
-                    df = df.drop(columns=['Data_Obj'], errors='ignore')
-                    df.to_csv(FILE_PRENOTAZIONI, index=False)
-        except Exception:
-            pass
-
-forza_aggiornamento_listino_nuovo()
-
 def applica_azione_rapida(idx, widget_key):
     azione = st.session_state[widget_key]
     if azione != "⚡ Azione":
@@ -464,9 +429,9 @@ st.divider()
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
 
-# --- 💼 SALDO CLIENTI ABITUALI ---
+# --- 💼 SALDO CLIENTI ABITUALI (CON FILTRO MESI) ---
 with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di fine periodo)", expanded=False):
-    st.info("Usa questa sezione per far pagare in un colpo solo tutte le giornate accumulate da un cliente.")
+    st.info("Usa questa sezione per far pagare in un colpo solo le giornate accumulate da un cliente. Ora puoi scegliere se saldare tutto o solo alcuni mesi specifici!")
     
     if not df_pren.empty:
         clienti_con_debiti = df_pren[df_pren['Incassato_da'] == "Da saldare"]['Nome'].dropna().unique().tolist()
@@ -478,50 +443,64 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
     
     if cliente_sel:
         mask_da_saldare = (df_pren['Nome'] == cliente_sel) & (df_pren['Incassato_da'] == "Da saldare")
-        df_cliente = df_pren[mask_da_saldare]
+        df_cliente = df_pren[mask_da_saldare].copy()
         
         if not df_cliente.empty:
-            totale_dovuto = df_cliente['Prezzo_Giorno'].sum()
-            st.warning(f"💶 **Totale accumulato da saldare per {cliente_sel}: € {totale_dovuto:.2f}**")
+            df_cliente['Mese_Num'] = pd.to_datetime(df_cliente['Data'], errors='coerce').dt.month
+            df_cliente['Mese_Nome'] = df_cliente['Mese_Num'].apply(lambda x: MESI_ITA[int(x)] if pd.notna(x) else "Sconosciuto")
             
-            st.markdown("### 🏷️ Inserisci il Saldo Finale")
+            mesi_disponibili = df_cliente['Mese_Nome'].dropna().unique().tolist()
             
-            col_sc, col_inc = st.columns(2)
-            with col_sc:
-                prezzo_finale = st.number_input("Cifra arrotondata che il cliente paga (es. 200):", min_value=0.0, max_value=float(totale_dovuto), value=float(totale_dovuto), step=1.0)
-                sconto_cumulativo = totale_dovuto - prezzo_finale
-                percentuale_sconto = 0.0
+            st.markdown("### 📅 Scegli i mesi da saldare")
+            mesi_selezionati = st.multiselect("Mesi inclusi nel pagamento:", mesi_disponibili, default=mesi_disponibili)
+            
+            if mesi_selezionati:
+                df_cliente_filtrato = df_cliente[df_cliente['Mese_Nome'].isin(mesi_selezionati)]
+                totale_dovuto = df_cliente_filtrato['Prezzo_Giorno'].sum()
                 
-                if sconto_cumulativo > 0 and totale_dovuto > 0:
-                    percentuale_sconto = (sconto_cumulativo / totale_dovuto) * 100
-                    st.info(f"💡 Sconto applicato: **€ {sconto_cumulativo:.2f}** (pari al **{percentuale_sconto:.1f}%**)")
+                mesi_str = ", ".join(mesi_selezionati)
+                st.warning(f"💶 **Totale da saldare per {cliente_sel} ({mesi_str}): € {totale_dovuto:.2f}**")
+                
+                st.markdown("### 🏷️ Inserisci il Saldo Finale")
+                
+                col_sc, col_inc = st.columns(2)
+                with col_sc:
+                    prezzo_finale = st.number_input("Cifra arrotondata che il cliente paga (es. 200):", min_value=0.0, max_value=float(totale_dovuto), value=float(totale_dovuto), step=1.0)
+                    sconto_cumulativo = totale_dovuto - prezzo_finale
+                    percentuale_sconto = 0.0
                     
-            with col_inc:
-                incassato_da_cum = st.selectbox("💰 I soldi sono incassati in questo momento da:", OPERATORI_SPIAGGIA, key="inc_cum")
-                
-            totale_scontato = totale_dovuto - sconto_cumulativo
-            st.success(f"💳 **TOTALE NETTO CHE IL CLIENTE PAGA ORA: € {totale_scontato:.2f}**")
-            
-            if st.button("✅ Registra Saldo Definitivo (Aggiorna tutto)"):
-                indici = df_cliente.index.tolist()
-                
-                if sconto_cumulativo > 0:
-                    ultimo_idx = indici[-1]
-                    df_pren.loc[ultimo_idx, 'Prezzo_Giorno'] -= sconto_cumulativo
-                    df_pren.loc[ultimo_idx, 'Sconto'] = sconto_cumulativo
-                    nota_esistente = str(df_pren.loc[ultimo_idx, 'Note']) if pd.notna(df_pren.loc[ultimo_idx, 'Note']) else ""
-                    df_pren.loc[ultimo_idx, 'Note'] = f"Sconto €{sconto_cumulativo:.2f} ({percentuale_sconto:.1f}%). " + nota_esistente
-                
-                for idx in indici:
-                    df_pren.loc[idx, 'Incassato_da'] = incassato_da_cum
-                    stato_attuale = df_pren.loc[idx, 'Stato']
-                    if stato_attuale in ["Attesa", "Confermato", "Presente", "Pagato"]:
-                        df_pren.loc[idx, 'Stato'] = "Pres_Pagato"
+                    if sconto_cumulativo > 0 and totale_dovuto > 0:
+                        percentuale_sconto = (sconto_cumulativo / totale_dovuto) * 100
+                        st.info(f"💡 Sconto applicato: **€ {sconto_cumulativo:.2f}** (pari al **{percentuale_sconto:.1f}%**)")
                         
-                df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                backup_istantaneo_telegram(f"Saldo registrato per {cliente_sel}")
-                st.success(f"Perfetto! Tutte le {len(indici)} postazioni di {cliente_sel} sono state saldate e aggiornate a 'Presente e Pagato'.")
-                st.rerun()
+                with col_inc:
+                    incassato_da_cum = st.selectbox("💰 I soldi sono incassati in questo momento da:", OPERATORI_SPIAGGIA, key="inc_cum")
+                    
+                totale_scontato = totale_dovuto - sconto_cumulativo
+                st.success(f"💳 **TOTALE NETTO CHE IL CLIENTE PAGA ORA: € {totale_scontato:.2f}**")
+                
+                if st.button("✅ Registra Saldo Definitivo (Aggiorna tutto)"):
+                    indici = df_cliente_filtrato.index.tolist()
+                    
+                    if sconto_cumulativo > 0:
+                        ultimo_idx = indici[-1]
+                        df_pren.loc[ultimo_idx, 'Prezzo_Giorno'] -= sconto_cumulativo
+                        df_pren.loc[ultimo_idx, 'Sconto'] = sconto_cumulativo
+                        nota_esistente = str(df_pren.loc[ultimo_idx, 'Note']) if pd.notna(df_pren.loc[ultimo_idx, 'Note']) else ""
+                        df_pren.loc[ultimo_idx, 'Note'] = f"Sconto €{sconto_cumulativo:.2f} ({percentuale_sconto:.1f}%). " + nota_esistente
+                    
+                    for idx in indici:
+                        df_pren.loc[idx, 'Incassato_da'] = incassato_da_cum
+                        stato_attuale = df_pren.loc[idx, 'Stato']
+                        if stato_attuale in ["Attesa", "Confermato", "Presente", "Pagato"]:
+                            df_pren.loc[idx, 'Stato'] = "Pres_Pagato"
+                            
+                    df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+                    backup_istantaneo_telegram(f"Saldo registrato per {cliente_sel} (Mesi: {mesi_str})")
+                    st.success(f"Perfetto! Tutte le {len(indici)} postazioni di {cliente_sel} dei mesi selezionati sono state saldate.")
+                    st.rerun()
+            else:
+                st.error("Seleziona almeno un mese per procedere col calcolo del pagamento.")
 
 # --- 🔍 MOTORE DI RICERCA INTELLIGENTE ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
@@ -552,41 +531,53 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     edited_df['Data'] = pd.to_datetime(edited_df['Data'], errors='coerce')
                     edited_df = edited_df.dropna(subset=['Data'])
                     
+                    # --- ISOLAMENTO RIGHE MODIFICATE EFFETTIVAMENTE (PER SCUDO ERRORI PASSATO) ---
+                    righe_cambiate = {}
                     for idx in edited_df.index:
+                        if idx in risultati_filtrati.index:
+                            vecchio_rec = risultati_filtrati.loc[idx]
+                            nuovo_rec = edited_df.loc[idx]
+                            
+                            if not vecchio_rec.equals(nuovo_rec):
+                                righe_cambiate[idx] = nuovo_rec
+                    
+                    # Ricalcolo automatico prezzi feriali/festivi solo sulle righe effettivamente cambiate
+                    for idx, row_cambiata in righe_cambiate.items():
                         try:
-                            if idx in risultati.index:
-                                old_fila = str(risultati.loc[idx, 'Fila'])
-                                new_fila = str(edited_df.loc[idx, 'Fila'])
-                                old_durata = str(risultati.loc[idx, 'Durata'])
-                                new_durata = str(edited_df.loc[idx, 'Durata'])
-                                old_persone = int(risultati.loc[idx, 'Persone'])
-                                new_persone = int(edited_df.loc[idx, 'Persone'])
+                            old_fila = str(risultati_filtrati.loc[idx, 'Fila'])
+                            new_fila = str(row_cambiata['Fila'])
+                            old_durata = str(risultati_filtrati.loc[idx, 'Durata'])
+                            new_durata = str(row_cambiata['Durata'])
+                            old_persone = int(risultati_filtrati.loc[idx, 'Persone'])
+                            new_persone = int(row_cambiata['Persone'])
+                            
+                            old_ex_val = risultati_filtrati.loc[idx, 'Extra']
+                            new_ex_val = row_cambiata['Extra']
+                            old_extra = "" if pd.isna(old_ex_val) or str(old_ex_val).lower() in ['nan', 'none'] else str(old_ex_val).strip()
+                            new_extra = "" if pd.isna(new_ex_val) or str(new_ex_val).lower() in ['nan', 'none'] else str(new_ex_val).strip()
+                            
+                            old_prezzo = float(risultati_filtrati.loc[idx, 'Prezzo_Giorno'])
+                            new_prezzo = float(row_cambiata['Prezzo_Giorno'])
+                            
+                            if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
+                                data_obj = pd.to_datetime(row_cambiata['Data']).date()
+                                extra_list = [new_extra] if new_extra else []
+                                nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
                                 
-                                old_ex_val = risultati.loc[idx, 'Extra']
-                                new_ex_val = edited_df.loc[idx, 'Extra']
-                                old_extra = "" if pd.isna(old_ex_val) or str(old_ex_val).lower() in ['nan', 'none'] else str(old_ex_val).strip()
-                                new_extra = "" if pd.isna(new_ex_val) or str(new_ex_val).lower() in ['nan', 'none'] else str(new_ex_val).strip()
-                                
-                                old_prezzo = float(risultati.loc[idx, 'Prezzo_Giorno'])
-                                new_prezzo = float(edited_df.loc[idx, 'Prezzo_Giorno'])
-                                
-                                if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
-                                    data_obj = edited_df.loc[idx, 'Data'].date()
-                                    extra_list = [new_extra] if new_extra else []
-                                    
-                                    nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
-                                    if str(edited_df.loc[idx, 'Incassato_da']) != "Ospite (Gratis)":
-                                        edited_df.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
-                                        edited_df.loc[idx, 'Extra'] = new_extra
+                                if str(row_cambiata['Incassato_da']) != "Ospite (Gratis)":
+                                    edited_df.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
+                                    edited_df.loc[idx, 'Extra'] = new_extra
                         except Exception:
                             pass
                     
+                    # Database temporaneo senza l'intero elenco cercato originariamente
                     df_pren_temp = df_pren.drop(risultati.index)
                     has_overlap = False
                     
-                    for idx in edited_df.index:
-                        inc = str(edited_df.loc[idx, 'Incassato_da'])
-                        sto = str(edited_df.loc[idx, 'Stato'])
+                    # Il controllo sovrapposizioni gira SOLO ed ESCLUSIVAMENTE sulle date modificate oggi!
+                    for idx, row_cambiata in righe_cambiate.items():
+                        inc = str(row_cambiata['Incassato_da'])
+                        sto = str(row_cambiata['Stato'])
                         
                         if inc == "Ospite (Gratis)":
                             edited_df.loc[idx, 'Prezzo_Giorno'] = 0.0
@@ -598,9 +589,9 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 edited_df.loc[idx, 'Stato'] = "Pagato"
 
                         stato_finale = edited_df.loc[idx, 'Stato']
-                        d_str = edited_df.loc[idx, 'Data'].strftime('%Y-%m-%d')
-                        fila = edited_df.loc[idx, 'Fila']
-                        omb = int(edited_df.loc[idx, 'Ombrellone'])
+                        d_str = pd.to_datetime(row_cambiata['Data']).strftime('%Y-%m-%d')
+                        fila = row_cambiata['Fila']
+                        omb = int(row_cambiata['Ombrellone'])
 
                         if stato_finale != "Libero":
                             overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
@@ -610,7 +601,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                             if not overlap.empty:
                                 reale_conflitto = False
                                 nome_occ = ""
-                                durata_corrente = str(edited_df.loc[idx, 'Durata'])
+                                durata_corrente = str(row_cambiata['Durata'])
                                 for _, o_row in overlap.iterrows():
                                     st_es = str(o_row['Stato'])
                                     dur_es = str(o_row['Durata'])
@@ -628,7 +619,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
 
                     if not has_overlap:
                         df_pren = df_pren_temp
-                        edited_df['Data'] = edited_df['Data'].dt.strftime('%Y-%m-%d')
+                        edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
                         df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
                         df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
                         backup_istantaneo_telegram("Modifiche salvate da Ricerca")
@@ -722,7 +713,7 @@ if len(date_selezionate) > 0:
 input_prezzo = st.sidebar.number_input("Prezzo TOTALE (Tutti i giorni e postazioni) (€)", min_value=0.0, value=float(prezzo_consigliato_totale), step=1.0)
 
 st.sidebar.markdown("---")
-tipo_salvataggio = st.sidebar.radio("Se la postazione risulta già occupata:", ["Blocca (Errore)", "Sostituisci (Cancella il vecchio)", "Subentro (Tieni il vecchio per l'incasso)"], help="Scegli Subentro per far pagare due clienti sulloCampione dello stesso ombrellone nello stesso giorno")
+tipo_salvataggio = st.sidebar.radio("Se la postazione risulta già occupata:", ["Blocca (Errore)", "Sostituisci (Cancella il vecchio)", "Subentro (Tieni il vecchio per l'incasso)"], help="Scegli Subentro per far pagare due clienti sullo stesso ombrellone nello stesso giorno")
 
 submit = st.sidebar.button("Applica Modifiche", type="primary", use_container_width=True)
 
@@ -827,7 +818,7 @@ if submit:
                                 "Note": input_note, "Operatore": operatore_attivo, "Incassato_da": input_incassato
                             }])
                             if df_pren.empty:
-                                df_pren = nuova_p
+                                df_pren = nueva_p
                             else:
                                 df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
                 df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
@@ -1020,33 +1011,22 @@ else:
                 numero_omb = i + 1
                 colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx, stato_omb = controlla_posto(numero_omb, nome_fila)
                 
-                # --- CALCOLO NUOVO ORIENTAMENTO FISICO REALE SCALATO AGGIORNATO ---
                 etichetta = ""
                 if nome_fila == "Prima Fila":
-                    if numero_omb <= 6: 
-                        etichetta = "1ª Fila"
-                    else: 
-                        etichetta = "Fisicamente in 2ª Fila"
+                    if numero_omb <= 6: etichetta = "1ª Fila"
+                    else: etichetta = "Fisicamente in 2ª Fila"
                 elif nome_fila == "Seconda Fila":
-                    if numero_omb <= 6: 
-                        etichetta = "2ª Fila"
-                    else: 
-                        etichetta = "Fisicamente in 3ª Fila"
+                    if numero_omb <= 6: etichetta = "2ª Fila"
+                    else: etichetta = "Fisicamente in 3ª Fila"
                 elif nome_fila == "Terza Fila":
-                    if numero_omb <= 6: 
-                        etichetta = "3ª Fila"
-                    else: 
-                        etichetta = "Fisicamente in 4ª Fila"
+                    if numero_omb <= 6: etichetta = "3ª Fila"
+                    else: etichetta = "Fisicamente in 4ª Fila"
                 elif nome_fila == "Quarta Fila":
-                    if numero_omb <= 6: 
-                        etichetta = "4ª Fila"
-                    else: 
-                        etichetta = "Fisicamente in 5ª Fila"
+                    if numero_omb <= 6: etichetta = "4ª Fila"
+                    else: etichetta = "Fisicamente in 5ª Fila"
                 elif nome_fila == "Quinta Fila":
-                    if numero_omb <= 4: 
-                        etichetta = "5ª Fila"
-                    else: 
-                        etichetta = "Fisicamente in 6ª Fila"
+                    if numero_omb <= 4: etichetta = "5ª Fila"
+                    else: etichetta = "Fisicamente in 6ª Fila"
                 elif nome_fila == "Sesta Fila (Altre)":
                     etichetta = "6ª Fila"
                 else:
@@ -1153,42 +1133,49 @@ else:
             edited_range['Data'] = pd.to_datetime(edited_range['Data'], errors='coerce')
             edited_range = edited_range.dropna(subset=['Data'])
             
-            # --- AUTO RICALCOLO PREZZO DA TABELLA INTELLIGENTE ---
+            # --- ISOLAMENTO RIGHE MODIFICATE EFFETTIVAMENTE NELLA GRIGLIA IN BASSO ---
+            righe_cambiate_oggi = {}
             for idx in edited_range.index:
+                if idx in df_range_edit.index:
+                    if not df_range_edit.loc[idx].equals(edited_range.loc[idx]):
+                        righe_cambiate_oggi[idx] = edited_range.loc[idx]
+            
+            # Auto ricalcolo prezzi solo sui record reali modificati ora
+            for idx, row_cambiata in righe_cambiate_oggi.items():
                 try:
-                    if idx in df_range.index:
-                        old_fila = str(df_range.loc[idx, 'Fila'])
-                        new_fila = str(edited_range.loc[idx, 'Fila'])
-                        old_durata = str(df_range.loc[idx, 'Durata'])
-                        new_durata = str(edited_range.loc[idx, 'Durata'])
-                        old_persone = int(df_range.loc[idx, 'Persone'])
-                        new_persone = int(edited_range.loc[idx, 'Persone'])
+                    old_fila = str(df_range_edit.loc[idx, 'Fila'])
+                    new_fila = str(row_cambiata['Fila'])
+                    old_durata = str(df_range_edit.loc[idx, 'Durata'])
+                    new_durata = str(row_cambiata['Durata'])
+                    old_persone = int(df_range_edit.loc[idx, 'Persone'])
+                    new_persone = int(row_cambiata['Persone'])
+                    
+                    old_ex_val = df_range_edit.loc[idx, 'Extra']
+                    new_ex_val = row_cambiata['Extra']
+                    old_extra = "" if pd.isna(old_ex_val) or str(old_ex_val).lower() in ['nan', 'none'] else str(old_ex_val).strip()
+                    new_extra = "" if pd.isna(new_ex_val) or str(new_ex_val).lower() in ['nan', 'none'] else str(new_ex_val).strip()
+                    
+                    old_prezzo = float(df_range_edit.loc[idx, 'Prezzo_Giorno'])
+                    new_prezzo = float(row_cambiata['Prezzo_Giorno'])
+                    
+                    if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
+                        data_obj = row_cambiata['Data'].date()
+                        extra_list = [new_extra] if new_extra else []
+                        nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
                         
-                        old_ex_val = df_range.loc[idx, 'Extra']
-                        new_ex_val = edited_range.loc[idx, 'Extra']
-                        old_extra = "" if pd.isna(old_ex_val) or str(old_ex_val).lower() in ['nan', 'none'] else str(old_ex_val).strip()
-                        new_extra = "" if pd.isna(new_ex_val) or str(new_ex_val).lower() in ['nan', 'none'] else str(new_ex_val).strip()
-                        
-                        old_prezzo = float(df_range.loc[idx, 'Prezzo_Giorno'])
-                        new_prezzo = float(edited_range.loc[idx, 'Prezzo_Giorno'])
-                        
-                        if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
-                            data_obj = edited_range.loc[idx, 'Data'].date()
-                            extra_list = [new_extra] if new_extra else []
-                            
-                            nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
-                            if str(edited_range.loc[idx, 'Incassato_da']) != "Ospite (Gratis)":
-                                edited_range.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
-                                edited_range.loc[idx, 'Extra'] = new_extra
+                        if str(row_cambiata['Incassato_da']) != "Ospite (Gratis)":
+                            edited_range.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
+                            edited_range.loc[idx, 'Extra'] = new_extra
                 except Exception:
                     pass
             
             df_pren_temp = df_pren.drop(df_range.index)
             has_overlap = False
             
-            for idx in edited_range.index:
-                inc = str(edited_range.loc[idx, 'Incassato_da'])
-                sto = str(edited_range.loc[idx, 'Stato'])
+            # Il controllo incrociato sovrapposizioni gira SOLO sulle righe modificate, isolando il passato!
+            for idx, row_cambiata in righe_cambiate_oggi.items():
+                inc = str(row_cambiata['Incassato_da'])
+                sto = str(row_cambiata['Stato'])
                 
                 if inc == "Ospite (Gratis)":
                     edited_range.loc[idx, 'Prezzo_Giorno'] = 0.0
@@ -1200,9 +1187,9 @@ else:
                         edited_range.loc[idx, 'Stato'] = "Pagato"
 
                 stato_finale = edited_range.loc[idx, 'Stato']
-                d_str = edited_range.loc[idx, 'Data'].strftime('%Y-%m-%d')
-                fila = edited_range.loc[idx, 'Fila']
-                omb = int(edited_range.loc[idx, 'Ombrellone'])
+                d_str = pd.to_datetime(row_cambiata['Data']).strftime('%Y-%m-%d')
+                fila = row_cambiata['Fila']
+                omb = int(row_cambiata['Ombrellone'])
 
                 if stato_finale != "Libero":
                     overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
@@ -1212,7 +1199,7 @@ else:
                     if not overlap.empty:
                         conflitto_reale = False
                         nome_occ = ""
-                        durata_corrente = str(edited_range.loc[idx, 'Durata'])
+                        durata_corrente = str(row_cambiata['Durata'])
                         for _, o_row in overlap.iterrows():
                             st_es = str(o_row['Stato'])
                             dur_es = str(o_row['Durata'])
@@ -1230,7 +1217,7 @@ else:
 
             if not has_overlap:
                 df_pren = df_pren_temp
-                edited_range['Data'] = edited_range['Data'].dt.strftime('%Y-%m-%d')
+                edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
                 df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
                 df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram("Modifiche salvate dalla tabella in basso")
