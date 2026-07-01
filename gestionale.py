@@ -113,7 +113,7 @@ def normalizza_tel(t):
 CAPIENZA_FILE = {
     "Prima Fila": 17,
     "Seconda Fila": 17,
-    "Terza Fila": 12,
+    "Terza Fila": 12, 
     "Quarta Fila": 10,
     "Quinta Fila": 7,
     "Sesta Fila (Altre)": 6
@@ -141,8 +141,8 @@ TARIFFE = {
     },
     "Media 2": {
         "Prima Fila": {"Feriale": [33, 7], "Festivo": [35, 9]},
-        "Seconda Fila": {"Feriale": [30, 6], "Festivo": [33, 8]},
-        "Terza Fila": {"Feriale": [30, 6], "Festivo": [33, 8]},
+        "Seconda Fila": {"Feriale": [28, 6], "Festivo": [31, 8]},
+        "Terza Fila": {"Feriale": [28, 6], "Festivo": [31, 8]},
         "Quarta Fila": {"Feriale": [28, 5], "Festivo": [30, 7]},
         "Quinta Fila": {"Feriale": [27, 5], "Festivo": [29, 7]},
         "Sesta Fila (Altre)": {"Feriale": [27, 4], "Festivo": [29, 5]}
@@ -340,19 +340,34 @@ def applica_azione_rapida(idx, widget_key):
         st.session_state[widget_key] = "⚡ Azione"
         
 
+# =========================================================================
+# 🛑 MOTORE DI CONTROLLO RIGIDO INPUT RAPIDI (BLOCCO PUNTI E TELEFONI CORTI)
+# =========================================================================
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
+    tel_key = f"tel_input_{fila}_{omb}_{data_str}"
+    raw_tel = st.session_state.get(tel_key, "").strip()
+    
     if raw_input:
         data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
         oggi = date.today()
         is_future = data_obj > oggi
         
-        parole = raw_input.split("-")[0].strip().split()
-        if is_future and len(parole) < 2:
-            st.session_state['map_error'] = f"🚨 ATTENZIONE: Hai provato a prenotare per i GIORNI FUTURI inserendo solo '{raw_input}'. È obbligatorio inserire anche il COGNOME!"
-            st.session_state[widget_key] = ""
+        # --- SCUDO 1: CONTROLLO COGNOME EFFETTIVO (Stop ai punti delle colleghe) ---
+        parole_pulite = [p for p in raw_input.split("-")[0].strip().split() if p.replace(".", "").strip() != ""]
+        
+        if len(parole_pulite) < 2:
+            st.session_state['map_error'] = f"🚨 ERRORE: Mancano dati! Devi inserire per forza sia il NOME che il COGNOME. I punti '.' non sono accettati!"
             return
             
+        # --- SCUDO 2: CONTROLLO NUMERO DI TELEFONO OBBLIGATORIO E REALE ---
+        tel_pulito = "".join([c for c in raw_tel if c.isdigit()])
+        if not raw_tel or len(tel_pulito) < 9:
+            st.session_state['map_error'] = f"🚨 ERRORE: Telefono Mancante o Errato! Inserisci un numero di telefono valido (minimo 9 cifre numeriche) per procedere."
+            return
+            
+        # Se passa tutti i controlli rigidi, esegue il salvataggio
+        st.session_state['map_error'] = "" # Resetta gli errori
         nome_cliente = raw_input
         operatore_finale = operatore_default
         
@@ -376,8 +391,10 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             
             rk = st.session_state.get('reset_form', 0)
             st.session_state[f'form_nome_{rk}'] = nome_cliente
+            st.session_state[f'form_tel_{rk}'] = raw_tel
             
             st.session_state[widget_key] = "" 
+            st.session_state[tel_key] = ""
         else:
             df = carica_prenotazioni()
             
@@ -393,7 +410,7 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
             
             nuova_p = pd.DataFrame([{
                 "Data": data_str, "Fila": fila, "Ombrellone": int(omb),
-                "Nome": nome_cliente, "Telefono": "", "Stato": stato_automatico,
+                "Nome": nome_cliente, "Telefono": raw_tel, "Stato": stato_automatico,
                 "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
                 "Persone": 2, "Durata": durata_assegnata, "Extra": "",
                 "Note": "Subentro pomeridiano" if is_subentro else "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
@@ -406,7 +423,10 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
                 
             df.to_csv(FILE_PRENOTAZIONI, index=False)
             backup_istantaneo_telegram(f"Prenotazione Rapida Mappa: {nome_cliente}")
+            
+            # Svuota i campi solo a successo ottenuto
             st.session_state[widget_key] = "" 
+            st.session_state[tel_key] = ""
 
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
@@ -429,7 +449,7 @@ st.divider()
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
 
-# --- 💼 SALDO CLIENTI ABITUALI (CON FILTRO MESI) ---
+# --- 💼 SALDO CLIENTI ABITUALI ---
 with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di fine periodo)", expanded=False):
     st.info("Usa questa sezione per far pagare in un colpo solo le giornate accumulate da un cliente. Ora puoi scegliere se saldare tutto o solo alcuni mesi specifici!")
     
@@ -531,17 +551,14 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     edited_df['Data'] = pd.to_datetime(edited_df['Data'], errors='coerce')
                     edited_df = edited_df.dropna(subset=['Data'])
                     
-                    # --- ISOLAMENTO RIGHE MODIFICATE EFFETTIVAMENTE (PER SCUDO ERRORI PASSATO) ---
                     righe_cambiate = {}
                     for idx in edited_df.index:
                         if idx in risultati_filtrati.index:
                             vecchio_rec = risultati_filtrati.loc[idx]
                             nuovo_rec = edited_df.loc[idx]
-                            
                             if not vecchio_rec.equals(nuovo_rec):
                                 righe_cambiate[idx] = nuovo_rec
                     
-                    # Ricalcolo automatico prezzi feriali/festivi solo sulle righe effettivamente cambiate
                     for idx, row_cambiata in righe_cambiate.items():
                         try:
                             old_fila = str(risultati_filtrati.loc[idx, 'Fila'])
@@ -570,11 +587,9 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                         except Exception:
                             pass
                     
-                    # Database temporaneo senza l'intero elenco cercato originariamente
                     df_pren_temp = df_pren.drop(risultati.index)
                     has_overlap = False
                     
-                    # Il controllo sovrapposizioni gira SOLO ed ESCLUSIVAMENTE sulle date modificate oggi!
                     for idx, row_cambiata in righe_cambiate.items():
                         inc = str(row_cambiata['Incassato_da'])
                         sto = str(row_cambiata['Stato'])
@@ -619,7 +634,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
 
                     if not has_overlap:
                         df_pren = df_pren_temp
-                        edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
+                        edited_df['Data'] = edited_df['Data'].dt.strftime('%Y-%m-%d')
                         df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
                         df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
                         backup_istantaneo_telegram("Modifiche salvate da Ricerca")
@@ -739,12 +754,13 @@ if submit:
         data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
         is_future = data_inizio > oggi
         
+        # Rigido controllo sulla barra laterale standard
         if not is_hotel_booking and not is_fisso_booking and not input_nome:
             st.sidebar.error("⚠️ Il campo Nome è obbligatorio per i nuovi clienti!")
-        elif not is_hotel_booking and not is_fisso_booking and is_future and len(input_nome.split()) < 2:
-            st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME per le prenotazioni dei giorni futuri!")
-        elif not is_hotel_booking and not is_fisso_booking and is_future and not input_telefono:
-            st.sidebar.error("🚨 ERRORE: Il numero di telefono è obbligatorio per le prenotazioni dei giorni futuri!")
+        elif not is_hotel_booking and not is_fisso_booking and len([p for p in input_nome.split() if p.replace(".","").strip()!=""]) < 2:
+            st.sidebar.error("🚨 ERRORE: Devi inserire sia il NOME che il COGNOME! I punti non sono validi.")
+        elif not is_hotel_booking and not is_fisso_booking and (not input_telefono or len("".join([c for c in input_telefono if c.isdigit()])) < 9):
+            st.sidebar.error("🚨 ERRORE: Il numero di telefono corretto (minimo 9 cifre) è obbligatorio!")
         else:
             giorni_totali = (data_fine - data_inizio).days + 1
             date_list_str = [(data_inizio + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali)]
@@ -772,7 +788,7 @@ if submit:
                         st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
                         break
 
-            if not conflitto_sidebar:
+            if not conflicto_sidebar:
                 if input_telefono:
                     tel_norm = normalizza_tel(input_telefono)
                     if not df_clienti.empty:
@@ -818,12 +834,12 @@ if submit:
                                 "Note": input_note, "Operatore": operatore_attivo, "Incassato_da": input_incassato
                             }])
                             if df_pren.empty:
-                                df_pren = nueva_p
+                                df_pren = nuova_p
                             else:
                                 df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
                 df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {nome_da_salvare}")
-                st.sidebar.success("✅ Salvataggio completato! Il messaggio qui sotto è pronto da inviare.")
+                st.sidebar.success("✅ Salvataggio completato!")
                 
                 st.session_state['msg_tipo'] = "Hotel" if is_hotel_booking else "Privato"
                 st.session_state['msg_nome'] = input_hotel if is_hotel_booking else nome_da_salvare
@@ -856,7 +872,7 @@ if file_caricato is not None:
             df_ripristino = pd.read_csv(file_caricato, sep=None, engine='python')
             df_ripristino['Data'] = pd.to_datetime(df_ripristino['Data'], format='%d-%m-%Y', errors='coerce').fillna(pd.to_datetime(df_ripristino['Data'], errors='coerce')).dt.strftime('%Y-%m-%d')
             df_ripristino.to_csv(FILE_PRENOTAZIONI, index=False)
-            st.sidebar.success("✅ Ripristino completato! Ricarica la pagina.")
+            st.sidebar.success("✅ Ripristino completato!")
             st.rerun()
         except Exception:
             st.sidebar.error("❌ Formato file non valido.")
@@ -923,7 +939,7 @@ elif nome_wa and len(date_wa) == 0:
     st.sidebar.warning("⚠️ Seleziona le date per generare il messaggio.")
 
 # --- MAPPA VISIVA E TABELLA INTERATTIVA ---
-data_visiva = st.date_input("📅 Mappa Visiva: Seleziona SINGOLA DATA (per i clienti) o UN PERIODO (per cercare disponibilità fisse):", [], format="DD/MM/YYYY")
+data_visiva = st.date_input("📅 Mappa Visiva: Seleziona SINGOLA DATA o UN PERIODO:", [], format="DD/MM/YYYY")
 
 if len(data_visiva) == 0:
     st.info("👈 Seleziona una data per visualizzare la mappa della spiaggia.")
@@ -941,15 +957,15 @@ else:
     if giorni_totali_vis == 1:
         data_formattata_ita = f"{data_inizio_vis.day} {MESI_ITA[data_inizio_vis.month]} {data_inizio_vis.year}"
         
+        # MOSTRA LO SCUDO DI ERRORE IN PRIMO PIANO SE LE COLLEGHE SBALLLANO I CONTROLLI
         if st.session_state.get('map_error'):
             st.error(st.session_state['map_error'])
-            st.session_state['map_error'] = ""
             
         st.header(f"📅 Planning del {data_formattata_ita}")
         
         col_t1, col_t2 = st.columns([2, 1])
         with col_t1:
-            st.radio("⚙️ Cosa succede quando scrivi in un quadratino verde?", 
+            st.radio("⚙️ Cosa succede quando salvi dai campi rapidi sotto l'ombrellone?", 
                      ["⚡ Salva Subito (Clienti in Spiaggia)", "⬅️ Precompila a Sinistra (Nuove Prenotazioni)"], 
                      horizontal=True, key="map_mode")
             
@@ -1002,7 +1018,7 @@ else:
             return colore_box, f"{nome_c}", dettagli, hotel_html, badge_rivendibile, ultimo_record.name, stato
 
         modalita_attuale = st.session_state.get("map_mode", "⚡ Salva Subito")
-        placeholder_txt = "✏️ Nome rapido..." if "Salva" in modalita_attuale else "⬅️ Invia a sx..."
+        placeholder_txt = "✏️ Nome Cognome..." if "Salva" in modalita_attuale else "⬅️ Invia a sx..."
 
         for nome_fila, max_posti in CAPIENZA_FILE.items():
             st.subheader(nome_fila)
@@ -1011,6 +1027,7 @@ else:
                 numero_omb = i + 1
                 colore_box, titolo, sottotitolo, hotel_str, badge_rivend, row_idx, stato_omb = controlla_posto(numero_omb, nome_fila)
                 
+                # --- CALCOLO ORIENTAMENTO FISICO ---
                 etichetta = ""
                 if nome_fila == "Prima Fila":
                     if numero_omb <= 6: etichetta = "1ª Fila"
@@ -1054,27 +1071,38 @@ else:
                     
                     if stato_omb in ["Libero_Mat", "Libero_Pom"]:
                         widget_key_sub = f"quick_add_sub_{nome_fila}_{numero_omb}_{data_inizio_vis}"
-                        if widget_key_sub not in st.session_state:
-                            st.session_state[widget_key_sub] = ""
+                        tel_key_sub = f"tel_input_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                         
                         colonne_griglia[i].text_input(
-                            "Subentro",
-                            placeholder="✏️ Nuovo cliente...",
+                            "Subentro - Nome",
+                            placeholder="✏️ Nome Cognome...",
                             label_visibility="collapsed",
-                            key=widget_key_sub,
+                            key=widget_key_sub
+                        )
+                        colonne_griglia[i].text_input(
+                            "Subentro - Tel",
+                            placeholder="📱 Telefono...",
+                            label_visibility="collapsed",
+                            key=tel_key_sub,
                             on_change=gestisci_input_mappa,
                             args=(nome_fila, numero_omb, date_range_vis[0], widget_key_sub, operatore_attivo)
                         )
                 else:
                     widget_key = f"quick_add_{nome_fila}_{numero_omb}_{data_inizio_vis}"
-                    if widget_key not in st.session_state:
-                        st.session_state[widget_key] = ""
+                    tel_key = f"tel_input_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                     
+                    # --- INTERFACCIA RADDOPPIATA SOTTO L'OMBRELLONE (NOME + TELEFONO OBBLIGATORIO) ---
                     colonne_griglia[i].text_input(
-                        "Prenota",
+                        "Prenota - Nome",
                         placeholder=placeholder_txt,
                         label_visibility="collapsed",
-                        key=widget_key,
+                        key=widget_key
+                    )
+                    colonne_griglia[i].text_input(
+                        "Prenota - Tel",
+                        placeholder="📱 Telefono...",
+                        label_visibility="collapsed",
+                        key=tel_key,
                         on_change=gestisci_input_mappa,
                         args=(nome_fila, numero_omb, date_range_vis[0], widget_key, operatore_attivo)
                     )
@@ -1083,7 +1111,7 @@ else:
         data_in_ita = data_inizio_vis.strftime("%d/%m")
         data_fin_ita = data_fine_vis.strftime("%d/%m")
         st.header(f"🗓️ Radar Disponibilità Continua ({data_in_ita} - {data_fin_ita})")
-        st.info(f"💡 Visualizzazione per un periodo di **{giorni_totali_vis} giorni**. I posti **VERDI** sono liberi per tutto l'arco di tempo. I posti **ROSSI** sono occupati per almeno un giorno in questo periodo.")
+        st.info(f"💡 Visualizzazione per un periodo di **{giorni_totali_vis} giorni**.")
         st.divider()
 
         def controlla_posto_periodo(numero_ombrellone, fila):
@@ -1133,14 +1161,12 @@ else:
             edited_range['Data'] = pd.to_datetime(edited_range['Data'], errors='coerce')
             edited_range = edited_range.dropna(subset=['Data'])
             
-            # --- ISOLAMENTO RIGHE MODIFICATE EFFETTIVAMENTE NELLA GRIGLIA IN BASSO ---
             righe_cambiate_oggi = {}
             for idx in edited_range.index:
                 if idx in df_range_edit.index:
                     if not df_range_edit.loc[idx].equals(edited_range.loc[idx]):
                         righe_cambiate_oggi[idx] = edited_range.loc[idx]
             
-            # Auto ricalcolo prezzi solo sui record reali modificati ora
             for idx, row_cambiata in righe_cambiate_oggi.items():
                 try:
                     old_fila = str(df_range_edit.loc[idx, 'Fila'])
@@ -1172,7 +1198,6 @@ else:
             df_pren_temp = df_pren.drop(df_range.index)
             has_overlap = False
             
-            # Il controllo incrociato sovrapposizioni gira SOLO sulle righe modificate, isolando il passato!
             for idx, row_cambiata in righe_cambiate_oggi.items():
                 inc = str(row_cambiata['Incassato_da'])
                 sto = str(row_cambiata['Stato'])
