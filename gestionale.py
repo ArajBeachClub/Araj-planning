@@ -226,12 +226,12 @@ def trova_stagione(data_sel):
                 return stagione
     return "Media 1"
 
-def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
+def calcola_prezzo_automatico(data_sel, fila, persone, duration, extra_scelti):
     stagione = trova_stagione(data_sel)
     giorno_sett = data_sel.weekday()
     
     is_weekend = (giorno_sett >= 5) 
-    is_festivo = (data_sel in GIORNI_FESTIVI)
+    is_festivo = (data_sel in GIORDI_FESTIVI) if 'GIORDI_FESTIVI' in globals() else (data_sel in GIORNI_FESTIVI)
     
     giorno_successivo = data_sel + timedelta(days=1)
     is_prefestivo = (giorno_successivo in GIORNI_FESTIVI)
@@ -241,9 +241,9 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     prezzo_base = TARIFFE[stagione][fila][tipo_tariffa][0]
     suppl_persona = TARIFFE[stagione][fila][tipo_tariffa][1]
     
-    if durata == "Mezza Giornata (fino 13 / da 15.30)":
+    if duration == "Mezza Giornata (fino 13 / da 15.30)":
         prezzo_base = prezzo_base * 0.70
-    elif durata == "Solo 1 Persona (Postazione Ridotta)":
+    elif duration == "Solo 1 Persona (Postazione Ridotta)":
         prezzo_base = prezzo_base * 0.75
         
     totale = prezzo_base
@@ -347,7 +347,7 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
         oggi = date.today()
         is_future = data_obj > oggi
         
-        # === CONTROLLO CONTRO I PUNTI DELLE COLLEGHE ===
+        # === CONTROLLO CONTRO I PUNTI DELLE COLLEGHE (Mappa Normale/Oggi) ===
         nome_pulito = raw_input.replace(".", " ").strip()
         if len(nome_pulito) == 0:
             st.session_state['map_error'] = "🚨 ERRORE: Non è consentito inserire solo punti. Manca Nome e Cognome!"
@@ -411,13 +411,13 @@ for i, op in enumerate(OPERATORI_SPIAGGIA):
 if 'sb_operatore' not in st.session_state:
     st.session_state['sb_operatore'] = OPERATORI_SPIAGGIA[idx_op]
 
-operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
+operatore_attivo = st.selectbox("👤 Operatore Active (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
 
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
 
-# --- AREA SALDO ---
+# --- 💼 SALDO ---
 with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di fine periodo)", expanded=False):
     st.info("Usa questa sezione per far pagare in un colpo solo tutte le giornate accumulate da un cliente.")
     
@@ -579,7 +579,6 @@ if submit:
         nome_pulito = input_nome.replace(".", " ").strip()
         parole_nome = nome_pulito.split()
         
-        # Filtra i numeri e il + per il telefono
         cifre_tel = "".join([c for c in input_telefono if c.isdigit() or c == "+"])
         solo_numeri = "".join([c for c in input_telefono if c.isdigit()])
         
@@ -594,7 +593,6 @@ if submit:
                 st.sidebar.error("🚨 ERRORE: Il NUMERO DI TELEFONO è obbligatorio e deve essere valido (minimo 9 cifre, accetta prefissi) per i giorni futuri!")
                 st.stop()
                 
-        # Preparazione del nome finale da salvare
         nome_da_salvare = ""
         if is_fisso_booking:
             nome_da_salvare = input_fisso
@@ -694,7 +692,6 @@ if submit:
 
 # --- AREA NOTIFICHE WHATSAPP E BACKUP ---
 st.sidebar.markdown("---")
-# (Il blocco di backup e le notifiche di WhatsApp restano identiche al tuo file)
 st.sidebar.subheader("💾 Backup Locale")
 
 if not df_pren.empty:
@@ -767,7 +764,6 @@ if len(data_visiva) > 0:
             stato = ultimo_record['Stato']
             prezzo_g = ultimo_record['Prezzo_Giorno']
             pers = ultimo_record.get('Persone', 2)
-            durata = ultimo_record.get('Durata', "")
             nome_c = ultimo_record.get('Nome', "")
             
             dettagli = f"€{prezzo_g:.0f} 👤 {pers}"
@@ -800,46 +796,186 @@ if len(data_visiva) > 0:
                     if widget_key not in st.session_state: st.session_state[widget_key] = "⚡ Azione"
                     colonne_griglia[i].selectbox("Azione Rapida", options=["⚡ Azione", "📍 Presente", "🔄 Libera e Subentra"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()], label_visibility="collapsed", key=widget_key, on_change=applica_azione_rapida, args=(row_idx, widget_key))
                 else:
-                    # ====================================================
-                    # GRIGLIA LIBERA: MODIFICA PER FUTURO (NOME E TELEFONO)
-                    # ====================================================
+                    # =========================================================================================
+                    # SOLUZIONE POPOVER: MANTIENE I QUADRATINI ORIZZONTALI E COMPATTI SENZA ROMPERE IL LAYOUT MOBILE
+                    # =========================================================================================
                     if is_future_map and "Salva" in modalita_attuale:
-                        n_key = f"nm_{nome_fila}_{numero_omb}_{data_inizio_vis}"
-                        t_key = f"tl_{nome_fila}_{numero_omb}_{data_inizio_vis}"
-                        
-                        nome_val = colonne_griglia[i].text_input("Nome", key=n_key, placeholder="Nome Cognome...", label_visibility="collapsed")
-                        tel_val = colonne_griglia[i].text_input("Tel", key=t_key, placeholder="+39 Telefono...", label_visibility="collapsed")
-                        
-                        if colonne_griglia[i].button("Salva", key=f"sv_{nome_fila}_{numero_omb}_{data_inizio_vis}"):
-                            nome_pulito = nome_val.replace(".", " ").strip()
-                            parole = nome_pulito.split()
-                            cifre_tel = "".join([c for c in tel_val if c.isdigit() or c == "+"])
-                            solo_numeri = "".join([c for c in tel_val if c.isdigit()])
+                        with colonne_griglia[i].popover("➕ Prenota", use_container_width=True):
+                            st.write(f"Ombrellone {numero_omb} - {nome_fila}")
+                            n_key = f"nm_{nome_fila}_{numero_omb}_{data_inizio_vis}"
+                            t_key = f"tl_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                             
-                            if len(nome_pulito) == 0 or len(parole) < 2:
-                                st.session_state['map_error'] = f"🚨 ERRORE Omb. {numero_omb}: Manca il NOME o COGNOME! I punti '.' non sono accettati per i giorni futuri."
-                                st.rerun()
-                            elif len(solo_numeri) < 9:
-                                st.session_state['map_error'] = f"🚨 ERRORE Omb. {numero_omb}: Il numero di TELEFONO è obbligatorio e deve essere valido (min. 9 cifre) per i giorni futuri."
-                                st.rerun()
-                            else:
-                                df_temp = carica_prenotazioni()
-                                pz = calcola_prezzo_automatico(data_inizio_vis, nome_fila, 2, "Giornata Intera", [])
-                                nuova_p = pd.DataFrame([{
-                                    "Data": date_range_vis[0], "Fila": nome_fila, "Ombrellone": int(numero_omb),
-                                    "Nome": nome_pulito, "Telefono": cifre_tel, "Stato": "Confermato",
-                                    "Prezzo_Giorno": pz, "Sconto": 0.0, "Hotel": "",
-                                    "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
-                                    "Note": "", "Operatore": operatore_attivo, "Incassato_da": "Da saldare"
-                                }])
-                                df_temp = pd.concat([df_temp, nuova_p], ignore_index=True)
-                                df_temp.to_csv(FILE_PRENOTAZIONI, index=False)
-                                backup_istantaneo_telegram(f"Prenotazione Mappa Futura: {nome_pulito}")
-                                st.session_state['map_error'] = ""
-                                st.rerun()
+                            nome_val = st.text_input("Nome e Cognome", key=n_key, placeholder="Mario Rossi")
+                            tel_val = st.text_input("Telefono obbligatorio", key=t_key, placeholder="+39...")
+                            
+                            if st.button("Conferma Registrazione", key=f"sv_{nome_fila}_{numero_omb}_{data_inizio_vis}"):
+                                nome_pulito = nome_val.replace(".", " ").strip()
+                                parole = nome_pulito.split()
+                                cifre_tel = "".join([c for c in tel_val if c.isdigit() or c == "+"])
+                                solo_numeri = "".join([c for c in tel_val if c.isdigit()])
+                                
+                                if len(nome_pulito) == 0 or len(parole) < 2:
+                                    st.error("🚨 ERRORE: Manca il NOME o COGNOME! (I punti non sono accettati).")
+                                elif len(solo_numeri) < 9:
+                                    st.error("🚨 ERRORE: Inserisci un TELEFONO reale (minimo 9 cifre)!")
+                                else:
+                                    df_temp = carica_prenotazioni()
+                                    pz = calcola_prezzo_automatico(data_inizio_vis, nome_fila, 2, "Giornata Intera", [])
+                                    nuova_p = pd.DataFrame([{
+                                        "Data": date_range_vis[0], "Fila": nome_fila, "Ombrellone": int(numero_omb),
+                                        "Nome": nome_pulito, "Telefono": cifre_tel, "Stato": "Confermato",
+                                        "Prezzo_Giorno": pz, "Sconto": 0.0, "Hotel": "",
+                                        "Persone": 2, "Durata": "Giornata Intera", "Extra": "",
+                                        "Note": "", "Operatore": operatore_attivo, "Incassato_da": "Da saldare"
+                                    }])
+                                    df_temp = pd.concat([df_temp, nuova_p], ignore_index=True)
+                                    df_temp.to_csv(FILE_PRENOTAZIONI, index=False)
+                                    backup_istantaneo_telegram(f"Prenotazione Mappa Futura: {nome_pulito}")
+                                    st.rerun()
                     else:
-                        # Comportamento normale per prenotazioni di oggi o precompila a sinistra
                         widget_key = f"quick_add_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                         if widget_key not in st.session_state: st.session_state[widget_key] = ""
                         colonne_griglia[i].text_input("Prenota", placeholder="✏️ Nome...", label_visibility="collapsed", key=widget_key, on_change=gestisci_input_mappa, args=(nome_fila, numero_omb, date_range_vis[0], widget_key, operatore_attivo))
 
+    else:
+        data_in_ita = data_inizio_vis.strftime("%d/%m")
+        data_fin_ita = data_fine_vis.strftime("%d/%m")
+        st.header(f"🗓️ Radar Disponibilità Continua ({data_in_ita} - {data_fin_ita})")
+        st.info(f"💡 Visualizzazione per un periodo di **{giorni_totali_vis} giorni**. I posti **VERDI** sono liberi per tutto l'arco di tempo. I posti **ROSSI** sono occupati per almeno un giorno in questo periodo.")
+        st.divider()
+
+        def controlla_posto_periodo(numero_ombrellone, fila):
+            if df_range.empty: return "#28a745", "LIBERO SEMPRE", "✅ Prenotabile fisso", ""
+            record = df_range[(df_range['Ombrellone'] == numero_ombrellone) & (df_range['Fila'] == fila)]
+            if record.empty:
+                return "#28a745", "LIBERO SEMPRE", "✅ Prenotabile fisso", ""
+            else:
+                giorni_occupati = len(record['Data'].unique())
+                return "#dc3545", "NON DISPONIBILE", f"Occupato {giorni_occupati}/{giorni_totali_vis} gg", ""
+
+        for nome_fila, max_posti in CAPIENZA_FILE.items():
+            st.subheader(nome_fila)
+            colonne_griglia = st.columns(max_posti) 
+            for i in range(max_posti):
+                numero_omb = i + 1
+                colore_box, titolo, sottotitolo, badge_rivend = controlla_posto_periodo(numero_omb, nome_fila)
+                box_html = f"<div style='background-color: {colore_box}; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px; border: 1px solid rgba(0,0,0,0.1);'><span style='font-size: 14px; font-weight: bold;'>{numero_omb}</span><br><hr style='margin: 3px 0; border: 0; border-top: 1px solid rgba(255,255,255,0.3);'><span style='font-size: 11px; font-weight: bold; display: block;'>{titolo}</span><span style='font-size: 10px; font-weight: normal; display: block;'>{sottotitolo}</span></div>"
+                colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
+
+    # TABELLA MODIFICABILE 
+    st.divider()
+    st.subheader("📋 Elenco Dettagliato (Modificabile)")
+    if not df_range.empty:
+        if giorni_totali_vis > 1:
+            st.warning("⚠️ Stai visualizzando e modificando i dati di PIÙ GIORNI contemporaneamente.")
+        else:
+            st.info("💡 Fai doppio clic sulle celle per modificare.\n\n✨ **MAGIA DEI PREZZI:** Se aggiungi Extra (Lettini/Teli) o cambi la Durata/Persone, NON SCRIVERE IL PREZZO A MANO! Scegli l'opzione dalla tendina e clicca il tasto rosso qui sotto: il computer farà il calcolo esatto al posto tuo nell'istante in cui salva!")
+        
+        colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
+        if 'Hotel' in df_range.columns: 
+            colonne_tabella.insert(4, "Hotel")
+        
+        df_range_edit = df_range[colonne_tabella].copy()
+        
+        df_range_edit['Data'] = pd.to_datetime(df_range_edit['Data'], errors='coerce').dt.date
+        df_range_edit = df_range_edit.dropna(subset=['Data'])
+        
+        df_range_edit['Fila'] = pd.Categorical(df_range_edit['Fila'], categories=list(CAPIENZA_FILE.keys()), ordered=True)
+        df_range_edit = df_range_edit.sort_values(by=['Data', 'Fila', 'Ombrellone'])
+        df_range_edit['Fila'] = df_range_edit['Fila'].astype(str)
+        
+        edited_range = st.data_editor(edited_range if 'edited_range' in locals() else df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_oggi")
+        
+        if st.button("💾 Salva Modifiche e Ricalcola Prezzi in Automatico", type="primary", key="btn_salva_oggi"):
+            edited_range['Data'] = pd.to_datetime(edited_range['Data'], errors='coerce')
+            edited_range = edited_range.dropna(subset=['Data'])
+            
+            righe_cambiate_oggi = {}
+            for idx in edited_range.index:
+                if idx in df_range_edit.index:
+                    if not df_range_edit.loc[idx].equals(edited_range.loc[idx]):
+                        righe_cambiate_oggi[idx] = edited_range.loc[idx]
+            
+            for idx, row_cambiata in righe_cambiate_oggi.items():
+                try:
+                    old_fila = str(df_range_edit.loc[idx, 'Fila'])
+                    new_fila = str(row_cambiata['Fila'])
+                    old_durata = str(df_range_edit.loc[idx, 'Durata'])
+                    new_durata = str(row_cambiata['Durata'])
+                    old_persone = int(df_range_edit.loc[idx, 'Persone'])
+                    new_persone = int(row_cambiata['Persone'])
+                    
+                    old_ex_val = df_range_edit.loc[idx, 'Extra']
+                    new_ex_val = row_cambiata['Extra']
+                    old_extra = "" if pd.isna(old_ex_val) or str(old_ex_val).lower() in ['nan', 'none'] else str(old_ex_val).strip()
+                    new_extra = "" if pd.isna(new_ex_val) or str(new_ex_val).lower() in ['nan', 'none'] else str(new_ex_val).strip()
+                    
+                    old_prezzo = float(df_range_edit.loc[idx, 'Prezzo_Giorno'])
+                    new_prezzo = float(row_cambiata['Prezzo_Giorno'])
+                    
+                    if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
+                        data_obj = row_cambiata['Data'].date()
+                        extra_list = [new_extra] if new_extra else []
+                        nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
+                        
+                        if str(row_cambiata['Incassato_da']) != "Ospite (Gratis)":
+                            edited_range.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
+                            edited_range.loc[idx, 'Extra'] = new_extra
+                except Exception:
+                    pass
+            
+            df_pren_temp = df_pren.drop(df_range.index)
+            has_overlap = False
+            
+            for idx, row_cambiata in righe_cambiate_oggi.items():
+                inc = str(row_cambiata['Incassato_da'])
+                sto = str(row_cambiata['Stato'])
+                
+                if inc == "Ospite (Gratis)":
+                    edited_range.loc[idx, 'Prezzo_Giorno'] = 0.0
+                    
+                if inc not in ["", "nan", "Da saldare"]:
+                    if sto == "Presente":
+                        edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
+                    elif sto in ["Attesa", "Confermato"]:
+                        edited_range.loc[idx, 'Stato'] = "Pagato"
+
+                stato_finale = edited_range.loc[idx, 'Stato']
+                d_str = pd.to_datetime(row_cambiata['Data']).strftime('%Y-%m-%d')
+                fila = row_cambiata['Fila']
+                omb = int(row_cambiata['Ombrellone'])
+
+                if stato_finale != "Libero":
+                    overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
+                                           (df_pren_temp['Fila'] == fila) & 
+                                           (df_pren_temp['Ombrellone'] == omb) &
+                                           (df_pren_temp['Stato'] != "Libero")]
+                    if not overlap.empty:
+                        conflitto_reale = False
+                        nome_occ = ""
+                        durata_corrente = str(row_cambiata['Durata'])
+                        for _, o_row in overlap.iterrows():
+                            st_es = str(o_row['Stato'])
+                            dur_es = str(o_row['Durata'])
+                            if st_es in ["Libero_Mat", "Libero_Pom"] or ("Mezza" in durata_corrente and "Mezza" in dur_es):
+                                continue
+                            else:
+                                conflitto_reale = True
+                                nome_occ = str(o_row['Nome'])
+                                break
+                        
+                        if conflitto_reale:
+                            st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
+                            has_overlap = True
+                            break
+
+            if not has_overlap:
+                df_pren = df_pren_temp
+                edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
+                df_pren = pd.concat([df_pren, edited_range], ignore_index=True)
+                df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+                backup_istantaneo_telegram("Modifiche salvate dalla tabella in basso")
+                st.success("✅ Dati aggiornati! Guarda il nuovo prezzo in tabella.")
+                st.rerun()
+    else:
+        st.info("Nessuna prenotazione registrata in questo periodo.")
