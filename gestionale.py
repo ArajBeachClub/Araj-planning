@@ -93,15 +93,6 @@ def backup_istantaneo_telegram(azione_eseguita):
         except Exception:
             pass
 
-def invia_notifica_telegram(messaggio):
-    messaggio_codificato = urllib.parse.quote(messaggio)
-    url = f"https://api.telegram.org/bot{TELEGRAM_TOKEN}/sendMessage?chat_id={TELEGRAM_CHAT_ID}&text={messaggio_codificato}"
-    try:
-        urllib.request.urlopen(url)
-        return True
-    except Exception:
-        return False
-
 def normalizza_tel(t):
     if not t or pd.isna(t): return ""
     t = str(t).strip().replace(" ", "").replace("+", "")
@@ -350,7 +341,6 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
         oggi = date.today()
         is_future = data_obj > oggi
         
-        # === CONTROLLO CONTRO I PUNTI DELLE COLLEGHE (Mappa Normale/Oggi) ===
         nome_pulito = raw_input.replace(".", " ").strip()
         parole = nome_pulito.split()
         
@@ -440,9 +430,9 @@ st.divider()
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
 
-# --- 💼 SALDO CLIENTI ABITUALI (CON FILTRO MESI) ---
+# --- 💼 SALDO ---
 with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di fine periodo)", expanded=False):
-    st.info("Usa questa sezione per far pagare in un colpo solo le giornate accumulate da un cliente. Ora puoi scegliere se saldare tutto o solo alcuni mesi specifici!")
+    st.info("Usa questa sezione per far pagare in un colpo solo tutte le giornate accumulate da un cliente.")
     
     if not df_pren.empty:
         clienti_con_debiti = df_pren[df_pren['Incassato_da'] == "Da saldare"]['Nome'].dropna().unique().tolist()
@@ -903,29 +893,29 @@ if nome_wa and len(date_wa) > 0:
         
     if tipo_cliente == "Privato":
         if lingua_scelta == "Italiano":
-            testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita}{fila_formattata_ita} è stata registrata correttamente all'Araj Beach Club.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisarci tempestivamente per evitare la cancellazione.\n\nGrazie e a presto!\n{operatore_msg}"
+            testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita}{fila_formattata_ita} è stata registrata correttamente.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisare tempestivamente inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date della prenotazione.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie e a presto!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Conferma Prenotazione - Araj Beach Club"
         elif lingua_scelta == "English":
-            testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us to avoid cancellation.\n\nThank you!\n{operatore_msg}"
+            testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us promptly by sending a WhatsApp message to +39 3391789319, indicating your reference name and reservation dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you and see you soon!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Reservation Confirmation - Araj Beach Club"
         elif lingua_scelta == "Français":
-            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée avec succès à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous en informer pour éviter l'annulation.\n\nMerci et à bientôt !\n{operatore_msg}"
+            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Confirmation de Réservation - Araj Beach Club"
         elif lingua_scelta == "Español":
-            testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, por favor avísenos para evitar la cancelación.\n\n¡Gracias y hasta pronto!\n{operatore_msg}"
+            testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, le rogamos que avise a tiempo enviando un mensaje de WhatsApp al número +39 3391789319, indicando el nombre de referencia y las fechas de la reserva.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias y hasta pronto!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Confirmación de Reserva - Araj Beach Club"
     else:
         if lingua_scelta == "Italiano":
-            testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo la prenotazione {stringa_date_ita}{fila_formattata_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi entro le ore 11:00.\n\nGrazie per la preziosa collaborazione!\n{operatore_msg}"
+            testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo la prenotazione {stringa_date_ita}{fila_formattata_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi entro le ore 11:00 inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie per la preziosa collaborazione!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Conferma Prenotazione Ospiti - Araj Beach Club"
         elif lingua_scelta == "English":
-            testo_base = f"Dear Staff at {nome_wa},\n\nWe confirm the reservation {stringa_date_eng}{fila_formattata_eng} for your guests.\n\nPlease notify us of any delays by 11:00 AM.\n\nThank you for your cooperation!\n{operatore_msg}"
+            testo_base = f"Dear Staff at {nome_wa},\n\nWe confirm the reservation {stringa_date_eng}{fila_formattata_eng} for your guests.\n\nPlease notify us of any delays by 11:00 AM via WhatsApp at +39 3391789319, indicating the reference name and dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you for your cooperation!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Guest Reservation Confirmation - Araj Beach Club"
         elif lingua_scelta == "Français":
-            testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00.\n\nMerci pour votre précieuse collaboration !\n{operatore_msg}"
+            testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00 via WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci pour votre précieuse collaboration !\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Confirmation de Réservation Clients - Araj Beach Club"
         elif lingua_scelta == "Español":
-            testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM.\n\n¡Gracias por su colaboración!\n{operatore_msg}"
+            testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nombre de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Confirmación de Reserva de Huéspedes - Araj Beach Club"
 
     testo_url = urllib.parse.quote(testo_base)
