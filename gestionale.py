@@ -24,10 +24,12 @@ if 'sb_dates' not in st.session_state: st.session_state['sb_dates'] = []
 if 'sb_fila' not in st.session_state: st.session_state['sb_fila'] = "Prima Fila"
 if 'sb_omb' not in st.session_state: st.session_state['sb_omb'] = 1
 
-if 'msg_tipo' not in st.session_state: st.session_state['msg_tipo'] = "Privato"
-if 'msg_nome' not in st.session_state: st.session_state['msg_nome'] = ""
-if 'msg_tel' not in st.session_state: st.session_state['msg_tel'] = ""
-if 'msg_dates' not in st.session_state: st.session_state['msg_dates'] = []
+# Variabili super-blindate per l'auto-compilazione WhatsApp
+if 'wa_tipo' not in st.session_state: st.session_state['wa_tipo'] = "Privato"
+if 'wa_nome' not in st.session_state: st.session_state['wa_nome'] = ""
+if 'wa_tel' not in st.session_state: st.session_state['wa_tel'] = ""
+if 'wa_dates' not in st.session_state: st.session_state['wa_dates'] = []
+if 'wa_fila' not in st.session_state: st.session_state['wa_fila'] = ""
 
 if 'map_error' not in st.session_state: st.session_state['map_error'] = ""
 
@@ -338,6 +340,7 @@ def applica_azione_rapida(idx, widget_key):
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
+        
 
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
@@ -346,12 +349,12 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
         oggi = date.today()
         is_future = data_obj > oggi
         
-        # === CONTROLLO CONTRO I PUNTI ===
+        # === CONTROLLO CONTRO I PUNTI DELLE COLLEGHE (Mappa Normale/Oggi) ===
         nome_pulito = raw_input.replace(".", " ").strip()
         parole = nome_pulito.split()
         
         if len(nome_pulito) == 0:
-            st.session_state['map_error'] = "🚨 ERRORE: Non inserire solo punti. Manca Nome e Cognome!"
+            st.session_state['map_error'] = "🚨 ERRORE: Non è consentito inserire solo punti. Manca Nome e Cognome!"
             st.session_state[widget_key] = ""
             return
             
@@ -838,13 +841,15 @@ if submit:
                             df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
             backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {nome_da_salvare}")
+            
+            # --- AUTO-COMPILAZIONE WHATSAPP BLINDATA ---
+            st.session_state.wa_tipo = "Hotel" if is_hotel_booking else "Privato"
+            st.session_state.wa_nome = input_hotel if is_hotel_booking else nome_da_salvare
+            st.session_state.wa_tel = cifre_tel
+            st.session_state.wa_dates = date_selezionate
+            st.session_state.wa_fila = input_fila
+            
             st.sidebar.success("✅ Salvataggio completato! Il messaggio qui sotto è pronto da inviare.")
-            
-            st.session_state['msg_tipo'] = "Hotel" if is_hotel_booking else "Privato"
-            st.session_state['msg_nome'] = input_hotel if is_hotel_booking else nome_da_salvare
-            st.session_state['msg_tel'] = cifre_tel
-            st.session_state['msg_dates'] = date_selezionate
-            
             st.session_state['reset_form'] += 1
             st.rerun()
 
@@ -862,24 +867,36 @@ st.sidebar.markdown("---")
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
 
 operatore_msg = st.sidebar.selectbox("👤 Inviato da:", OPERATORI_SPIAGGIA, index=OPERATORI_SPIAGGIA.index(st.session_state.get('sb_operatore', OPERATORI_SPIAGGIA[0])))
-idx_tipo = 1 if st.session_state.get('msg_tipo', 'Privato') == 'Hotel' else 0
-tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal=True, index=idx_tipo, key="radio_dest")
-date_wa = st.sidebar.date_input("Date prenotazione", value=st.session_state.get('msg_dates', []), format="DD/MM/YYYY")
-nome_wa = st.sidebar.text_input("Nome Cliente / Nome Hotel", value=st.session_state.get('msg_nome', ""))
-tel_wa = st.sidebar.text_input("Cellulare (Per WhatsApp)", value=st.session_state.get('msg_tel', ""))
+tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal=True, key="wa_tipo")
+date_wa = st.sidebar.date_input("Date prenotazione", key="wa_dates", format="DD/MM/YYYY")
+nome_wa = st.sidebar.text_input("Nome Cliente / Nome Hotel", key="wa_nome")
+tel_wa = st.sidebar.text_input("Cellulare (Per WhatsApp)", key="wa_tel")
 lingua_scelta = st.sidebar.selectbox("Lingua Messaggio", ["Italiano", "English"])
+
+fila_wa = st.session_state.get('wa_fila', "")
 
 if nome_wa and len(date_wa) > 0:
     data_inizio_ita = date_wa[0].strftime("%d/%m/%Y")
     if len(date_wa) > 1 and date_wa[0] != date_wa[1]:
         stringa_date_ita = f"dal {data_inizio_ita} al {date_wa[1].strftime('%d/%m/%Y')}"
+        stringa_date_eng = f"from {data_inizio_ita} to {date_wa[1].strftime('%d/%m/%Y')}"
     else:
         stringa_date_ita = f"per il giorno {data_inizio_ita}"
+        stringa_date_eng = f"for {data_inizio_ita}"
+        
+    fila_formattata_ita = f" in {fila_wa.split('(')[0].strip().lower()}" if fila_wa else ""
+    fila_formattata_eng = f" in {fila_wa.split('(')[0].strip().lower()}" if fila_wa else ""
         
     if tipo_cliente == "Privato":
-        testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita} è stata registrata correttamente all'Araj Beach Club.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisarci tempestivamente per evitare la cancellazione.\n\nGrazie e a presto!\n{operatore_msg}"
+        if lingua_scelta == "Italiano":
+            testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita}{fila_formattata_ita} è stata registrata correttamente all'Araj Beach Club.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisarci tempestivamente per evitare la cancellazione.\n\nGrazie e a presto!\n{operatore_msg}"
+        else:
+            testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us to avoid cancellation.\n\nThank you!\n{operatore_msg}"
     else:
-        testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo la prenotazione {stringa_date_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi entro le ore 11:00.\n\nGrazie per la preziosa collaborazione!\n{operatore_msg}"
+        if lingua_scelta == "Italiano":
+            testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo la prenotazione {stringa_date_ita}{fila_formattata_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi entro le ore 11:00.\n\nGrazie per la preziosa collaborazione!\n{operatore_msg}"
+        else:
+            testo_base = f"Dear Staff at {nome_wa},\n\nWe confirm the reservation {stringa_date_eng}{fila_formattata_eng} for your guests.\n\nPlease notify us of any delays by 11:00 AM.\n\nThank you for your cooperation!\n{operatore_msg}"
 
     testo_url = urllib.parse.quote(testo_base)
     
