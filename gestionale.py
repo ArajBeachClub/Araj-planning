@@ -24,10 +24,11 @@ if 'sb_dates' not in st.session_state: st.session_state['sb_dates'] = []
 if 'sb_fila' not in st.session_state: st.session_state['sb_fila'] = "Prima Fila"
 if 'sb_omb' not in st.session_state: st.session_state['sb_omb'] = 1
 
-# Variabili super-blindate per l'auto-compilazione WhatsApp
+# Variabili super-blindate per l'auto-compilazione WhatsApp/Email
 if 'wa_tipo' not in st.session_state: st.session_state['wa_tipo'] = "Privato"
 if 'wa_nome' not in st.session_state: st.session_state['wa_nome'] = ""
 if 'wa_tel' not in st.session_state: st.session_state['wa_tel'] = ""
+if 'wa_email' not in st.session_state: st.session_state['wa_email'] = ""
 if 'wa_dates' not in st.session_state: st.session_state['wa_dates'] = []
 if 'wa_fila' not in st.session_state: st.session_state['wa_fila'] = ""
 
@@ -842,18 +843,18 @@ if submit:
             df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
             backup_istantaneo_telegram(f"Nuova Prenotazione dalla Barra Laterale: {nome_da_salvare}")
             
-            # --- AUTO-COMPILAZIONE WHATSAPP BLINDATA ---
+            # --- AUTO-COMPILAZIONE WHATSAPP/EMAIL BLINDATA ---
             st.session_state.wa_tipo = "Hotel" if is_hotel_booking else "Privato"
             st.session_state.wa_nome = input_hotel if is_hotel_booking else nome_da_salvare
             st.session_state.wa_tel = cifre_tel
             st.session_state.wa_dates = date_selezionate
             st.session_state.wa_fila = input_fila
             
-            st.sidebar.success("✅ Salvataggio completato! Il messaggio qui sotto è pronto da inviare.")
+            st.sidebar.success("✅ Salvataggio completato! I dati di conferma sono pronti in basso.")
             st.session_state['reset_form'] += 1
             st.rerun()
 
-# --- AREA NOTIFICHE WHATSAPP E BACKUP ---
+# --- AREA NOTIFICHE WHATSAPP E EMAIL ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("💾 Backup Locale")
 
@@ -871,39 +872,76 @@ tipo_cliente = st.sidebar.radio("Destinatario", ["Privato", "Hotel"], horizontal
 date_wa = st.sidebar.date_input("Date prenotazione", key="wa_dates", format="DD/MM/YYYY")
 nome_wa = st.sidebar.text_input("Nome Cliente / Nome Hotel", key="wa_nome")
 tel_wa = st.sidebar.text_input("Cellulare (Per WhatsApp)", key="wa_tel")
-lingua_scelta = st.sidebar.selectbox("Lingua Messaggio", ["Italiano", "English"])
+email_wa = st.sidebar.text_input("Indirizzo Email", key="wa_email")
+lingua_scelta = st.sidebar.selectbox("Lingua Messaggio", ["Italiano", "English", "Français", "Español"])
 
 fila_wa = st.session_state.get('wa_fila', "")
+fila_ita = fila_wa.split('(')[0].strip() if fila_wa else ""
+fila_eng = fila_ita.replace("Prima", "First").replace("Seconda", "Second").replace("Terza", "Third").replace("Quarta", "Fourth").replace("Quinta", "Fifth").replace("Sesta", "Sixth").replace(" Fila", " Row")
+fila_fra = fila_ita.replace("Prima Fila", "Première ligne").replace("Seconda Fila", "Deuxième ligne").replace("Terza Fila", "Troisième ligne").replace("Quarta Fila", "Quatrième ligne").replace("Quinta Fila", "Cinquième ligne").replace("Sesta Fila", "Sixième ligne")
+fila_esp = fila_ita.replace("Prima", "Primera").replace("Seconda", "Segunda").replace("Terza", "Tercera").replace("Quarta", "Cuarta").replace("Quinta", "Quinta").replace("Sesta", "Sexta").replace(" Fila", " fila")
+
+fila_formattata_ita = f" in {fila_ita.lower()}" if fila_ita else ""
+fila_formattata_eng = f" in {fila_eng.lower()}" if fila_eng else ""
+fila_formattata_fra = f" en {fila_fra.lower()}" if fila_fra else ""
+fila_formattata_esp = f" en {fila_esp.lower()}" if fila_esp else ""
 
 if nome_wa and len(date_wa) > 0:
-    data_inizio_ita = date_wa[0].strftime("%d/%m/%Y")
     if len(date_wa) > 1 and date_wa[0] != date_wa[1]:
-        stringa_date_ita = f"dal {data_inizio_ita} al {date_wa[1].strftime('%d/%m/%Y')}"
-        stringa_date_eng = f"from {data_inizio_ita} to {date_wa[1].strftime('%d/%m/%Y')}"
+        d1 = date_wa[0].strftime("%d/%m/%Y")
+        d2 = date_wa[1].strftime("%d/%m/%Y")
+        stringa_date_ita = f"dal {d1} al {d2}"
+        stringa_date_eng = f"from {d1} to {d2}"
+        stringa_date_fra = f"du {d1} au {d2}"
+        stringa_date_esp = f"del {d1} al {d2}"
     else:
-        stringa_date_ita = f"per il giorno {data_inizio_ita}"
-        stringa_date_eng = f"for {data_inizio_ita}"
-        
-    fila_formattata_ita = f" in {fila_wa.split('(')[0].strip().lower()}" if fila_wa else ""
-    fila_formattata_eng = f" in {fila_wa.split('(')[0].strip().lower()}" if fila_wa else ""
+        d1 = date_wa[0].strftime("%d/%m/%Y")
+        stringa_date_ita = f"per il giorno {d1}"
+        stringa_date_eng = f"for {d1}"
+        stringa_date_fra = f"pour le {d1}"
+        stringa_date_esp = f"para el {d1}"
         
     if tipo_cliente == "Privato":
         if lingua_scelta == "Italiano":
             testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita}{fila_formattata_ita} è stata registrata correttamente all'Araj Beach Club.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisarci tempestivamente per evitare la cancellazione.\n\nGrazie e a presto!\n{operatore_msg}"
-        else:
+            oggetto = "Conferma Prenotazione - Araj Beach Club"
+        elif lingua_scelta == "English":
             testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us to avoid cancellation.\n\nThank you!\n{operatore_msg}"
+            oggetto = "Reservation Confirmation - Araj Beach Club"
+        elif lingua_scelta == "Français":
+            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée avec succès à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous en informer pour éviter l'annulation.\n\nMerci et à bientôt !\n{operatore_msg}"
+            oggetto = "Confirmation de Réservation - Araj Beach Club"
+        elif lingua_scelta == "Español":
+            testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, por favor avísenos para evitar la cancelación.\n\n¡Gracias y hasta pronto!\n{operatore_msg}"
+            oggetto = "Confirmación de Reserva - Araj Beach Club"
     else:
         if lingua_scelta == "Italiano":
             testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo la prenotazione {stringa_date_ita}{fila_formattata_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi entro le ore 11:00.\n\nGrazie per la preziosa collaborazione!\n{operatore_msg}"
-        else:
+            oggetto = "Conferma Prenotazione Ospiti - Araj Beach Club"
+        elif lingua_scelta == "English":
             testo_base = f"Dear Staff at {nome_wa},\n\nWe confirm the reservation {stringa_date_eng}{fila_formattata_eng} for your guests.\n\nPlease notify us of any delays by 11:00 AM.\n\nThank you for your cooperation!\n{operatore_msg}"
+            oggetto = "Guest Reservation Confirmation - Araj Beach Club"
+        elif lingua_scelta == "Français":
+            testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00.\n\nMerci pour votre précieuse collaboration !\n{operatore_msg}"
+            oggetto = "Confirmation de Réservation Clients - Araj Beach Club"
+        elif lingua_scelta == "Español":
+            testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM.\n\n¡Gracias por su colaboración!\n{operatore_msg}"
+            oggetto = "Confirmación de Reserva de Huéspedes - Araj Beach Club"
 
     testo_url = urllib.parse.quote(testo_base)
+    oggetto_url = urllib.parse.quote(oggetto)
     
-    if tel_wa:
-        tel_pulito = tel_wa.replace(" ", "").replace("+", "")
-        if not tel_pulito.startswith("39") and len(tel_pulito) < 11: tel_pulito = "39" + tel_pulito
-        st.link_button("💬 Invia via WhatsApp", f"https://wa.me/{tel_pulito}?text={testo_url}", use_container_width=True)
+    col1, col2 = st.sidebar.columns(2)
+    with col1:
+        if tel_wa:
+            tel_pulito = tel_wa.replace(" ", "").replace("+", "")
+            if not tel_pulito.startswith("39") and len(tel_pulito) < 11: tel_pulito = "39" + tel_pulito
+            st.link_button("💬 WhatsApp", f"https://wa.me/{tel_pulito}?text={testo_url}", use_container_width=True)
+    with col2:
+        if email_wa:
+            st.link_button("📧 Email", f"mailto:{email_wa}?subject={oggetto_url}&body={testo_url}", use_container_width=True)
+        else:
+            st.link_button("📧 Email (No Dest)", f"mailto:?subject={oggetto_url}&body={testo_url}", use_container_width=True)
 
 # --- MAPPA VISIVA E TABELLA INTERATTIVA ---
 data_visiva = st.date_input("📅 Mappa Visiva: Seleziona SINGOLA DATA (per i clienti) o UN PERIODO (per cercare disponibilità fisse):", [], format="DD/MM/YYYY")
