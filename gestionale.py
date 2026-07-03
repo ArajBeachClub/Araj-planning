@@ -867,14 +867,14 @@ lingua_scelta = st.sidebar.selectbox("Lingua Messaggio", ["Italiano", "English",
 
 fila_wa = st.session_state.get('wa_fila', "")
 fila_ita = fila_wa.split('(')[0].strip() if fila_wa else ""
-fila_eng = fila_ita.replace("Prima", "First").replace("Seconda", "Second").replace("Terza", "Third").replace("Quarta", "Fourth").replace("Quinta", "Fifth").replace("Sesta", "Sixth").replace(" Fila", " Row")
+fila_eng = fila_ita.replace("Prima", "First").replace("Seconda", "Second").replace("Terza", "Third").replace("Quarta", "Fourth").replace("Quinta", "Fifth").replace("Sesta", "Sixth").replace("Fila", "Row")
 fila_fra = fila_ita.replace("Prima Fila", "Première ligne").replace("Seconda Fila", "Deuxième ligne").replace("Terza Fila", "Troisième ligne").replace("Quarta Fila", "Quatrième ligne").replace("Quinta Fila", "Cinquième ligne").replace("Sesta Fila", "Sixième ligne")
-fila_esp = fila_ita.replace("Prima", "Primera").replace("Seconda", "Segunda").replace("Terza", "Tercera").replace("Quarta", "Cuarta").replace("Quinta", "Quinta").replace("Sesta", "Sexta").replace(" Fila", " fila")
+fila_esp = fila_ita.replace("Prima", "Primera").replace("Seconda", "Segunda").replace("Terza", "Tercera").replace("Quarta", "Cuarta").replace("Quinta", "Quinta").replace("Sesta", "Sexta").replace("Fila", "fila")
 
-fila_formattata_ita = f" in {fila_ita.lower()}" if fila_ita else ""
-fila_formattata_eng = f" in {fila_eng.lower()}" if fila_eng else ""
-fila_formattata_fra = f" en {fila_fra.lower()}" if fila_fra else ""
-fila_formattata_esp = f" en {fila_esp.lower()}" if fila_esp else ""
+fila_formattata_ita = f" in {fila_ita}" if fila_ita else ""
+fila_formattata_eng = f" in {fila_eng}" if fila_eng else ""
+fila_formattata_fra = f" en {fila_fra}" if fila_fra else ""
+fila_formattata_esp = f" en {fila_esp}" if fila_esp else ""
 
 if nome_wa and len(date_wa) > 0:
     if len(date_wa) > 1 and date_wa[0] != date_wa[1]:
@@ -1042,6 +1042,30 @@ if len(data_visiva) > 0:
                     widget_key = f"azione_rapida_{row_idx}_{nome_fila}_{numero_omb}_{data_inizio_vis}"
                     if widget_key not in st.session_state: st.session_state[widget_key] = "⚡ Azione"
                     colonne_griglia[i].selectbox("Azione Rapida", options=["⚡ Azione", "📍 Presente", "🔄 Libera e Subentra"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()], label_visibility="collapsed", key=widget_key, on_change=applica_azione_rapida, args=(row_idx, widget_key))
+                    
+                    # --- NUOVO: FINESTRA SUBENTRO INDIPENDENTE ---
+                    if stato_omb in ["Libero_Mat", "Libero_Pom"]:
+                        with colonne_griglia[i].popover("➕ Inserisci Subentro", use_container_width=True):
+                            st.write(f"Nuovo cliente (Mezza Giornata)")
+                            sub_n_key = f"sub_n_{nome_fila}_{numero_omb}"
+                            nome_val_sub = st.text_input("Nome Cliente", key=sub_n_key, placeholder="Nome...")
+                            if st.button("Salva Subentro", key=f"btn_sub_{nome_fila}_{numero_omb}"):
+                                nome_pulito = nome_val_sub.replace(".", " ").strip()
+                                if len(nome_pulito) == 0:
+                                    st.error("Inserisci il nome!")
+                                else:
+                                    df_temp = carica_prenotazioni()
+                                    pz = calcola_prezzo_automatico(data_inizio_vis, nome_fila, 2, "Mezza Giornata (fino 13 / da 15.30)", [])
+                                    nuova_p = pd.DataFrame([{
+                                        "Data": date_range_vis[0], "Fila": nome_fila, "Ombrellone": int(numero_omb),
+                                        "Nome": nome_pulito, "Telefono": "", "Stato": "Presente",
+                                        "Prezzo_Giorno": pz, "Sconto": 0.0, "Hotel": "",
+                                        "Persone": 2, "Durata": "Mezza Giornata (fino 13 / da 15.30)", "Extra": "",
+                                        "Note": "Subentro", "Operatore": operatore_attivo, "Incassato_da": "Da saldare"
+                                    }])
+                                    df_temp = pd.concat([df_temp, nuova_p], ignore_index=True)
+                                    df_temp.to_csv(FILE_PRENOTAZIONI, index=False)
+                                    st.rerun()
                 else:
                     if is_future_map and "Salva" in modalita_attuale:
                         with colonne_griglia[i].popover("➕ Prenota", use_container_width=True):
