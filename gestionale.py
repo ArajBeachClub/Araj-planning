@@ -236,9 +236,14 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     suppl_persona = TARIFFE[stagione][fila][tipo_tariffa][1]
     
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
-        prezzo_base = prezzo_base * 0.70
+        if stagione == "Alta B":
+            # PREZZO FISSO MEZZA GIORNATA IN ALTA B PER TUTTE LE FILE (24/26)
+            prezzo_base = 26.0 if tipo_tariffa == "Festivo" else 24.0
+        else:
+            prezzo_base = round(prezzo_base * 0.70)
+            
     elif durata == "Solo 1 Persona (Postazione Ridotta)":
-        prezzo_base = prezzo_base * 0.75
+        prezzo_base = round(prezzo_base * 0.75)
         
     totale = prezzo_base
     if persone > 3:
@@ -306,10 +311,8 @@ def applica_azione_rapida(idx, widget_key):
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
                 data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
                 
-                ex_val = str(df.loc[idx, 'Extra'])
-                extra_list = [x.strip() for x in ex_val.split(',')] if ex_val and ex_val.lower() not in ['nan', 'none', ''] else []
-                
-                prezzo_mezza = calcola_prezzo_automatico(data_obj, df.loc[idx, 'Fila'], df.loc[idx, 'Persone'], "Mezza Giornata (fino 13 / da 15.30)", extra_list)
+                # === AGGIORNATO: Il vecchio cliente passa a tariffa mezza giornata (24/26 in Alta B) ===
+                prezzo_mezza = calcola_prezzo_automatico(data_obj, df.loc[idx, 'Fila'], int(df.loc[idx, 'Persone']), "Mezza Giornata (fino 13 / da 15.30)", [])
                 df.loc[idx, 'Prezzo_Giorno'] = prezzo_mezza
                 
                 nota_prec = str(df.loc[idx, 'Note']) if pd.notna(df.loc[idx, 'Note']) else ""
@@ -318,11 +321,11 @@ def applica_azione_rapida(idx, widget_key):
                 
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Eseguito Libera e Subentro su indice {idx}")
-                st.success("Postazione liberata per il pomeriggio! Il vecchio incasso è al sicuro.")
+                st.success("Postazione liberata! Il vecchio cliente ora paga mezza giornata.")
             
             elif azione == "📍 Presente":
                 df.loc[idx, 'Stato'] = "Presente"
-            elif azione.startswith("💰 "):
+            elif action_val := azione.startswith("💰 "):
                 nome_breve = azione.replace("💰 ", "")
                 if nome_breve in MAPPA_NOMI_RAPIDI:
                     df.loc[idx, 'Incassato_da'] = MAPPA_NOMI_RAPIDI[nome_breve]
@@ -389,7 +392,8 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
                     is_subentro = True
 
             durata_assegnata = "Mezza Giornata (fino 13 / da 15.30)" if is_subentro else "Giornata Intera"
-            prezzo = calcola_prezzo_automatico(data_obj, fila, 2, durata_assegnata, [])
+            # Se è un subentro, applichiamo comunque il prezzo intero come da tua nuova direttiva!
+            prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
             stato_automatico = "Confermato" if is_future else "Presente"
             
             nuova_p = pd.DataFrame([{
@@ -781,7 +785,7 @@ if submit:
                     st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
                     break
 
-        if not conflitto_sidebar:
+        if not conflicto_sidebar:
             if cifre_tel:
                 tel_norm = normalizza_tel(cifre_tel)
                 if not df_clienti.empty:
@@ -871,10 +875,10 @@ fila_eng = fila_ita.replace("Prima", "First").replace("Seconda", "Second").repla
 fila_fra = fila_ita.replace("Prima Fila", "Première ligne").replace("Seconda Fila", "Deuxième ligne").replace("Terza Fila", "Troisième ligne").replace("Quarta Fila", "Quatrième ligne").replace("Quinta Fila", "Cinquième ligne").replace("Sesta Fila", "Sixième ligne")
 fila_esp = fila_ita.replace("Prima", "Primera").replace("Seconda", "Segunda").replace("Terza", "Tercera").replace("Quarta", "Cuarta").replace("Quinta", "Quinta").replace("Sesta", "Sexta").replace("Fila", "fila")
 
-fila_formattata_ita = f" in {fila_ita}" if fila_ita else ""
-fila_formattata_eng = f" in {fila_eng}" if fila_eng else ""
-fila_formattata_fra = f" en {fila_fra}" if fila_fra else ""
-fila_formattata_esp = f" en {fila_esp}" if fila_esp else ""
+fila_formattata_ita = f" in {fila_ita.lower()}" if fila_ita else ""
+fila_formattata_eng = f" in {fila_eng.lower()}" if fila_eng else ""
+fila_formattata_fra = f" en {fila_fra.lower()}" if fila_fra else ""
+fila_formattata_esp = f" en {fila_esp.lower()}" if fila_esp else ""
 
 if nome_wa and len(date_wa) > 0:
     if len(date_wa) > 1 and date_wa[0] != date_wa[1]:
@@ -912,7 +916,7 @@ if nome_wa and len(date_wa) > 0:
             testo_base = f"Dear Staff at {nome_wa},\n\nWe confirm the reservation {stringa_date_eng}{fila_formattata_eng} for your guests.\n\nPlease notify us of any delays by 11:00 AM via WhatsApp at +39 3391789319, indicating the reference name and dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you for your cooperation!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Guest Reservation Confirmation - Araj Beach Club"
         elif lingua_scelta == "Français":
-            testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00 via WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci pour votre précieuse collaboration !\n\n{operatore_msg}\nAraj Beach Club"
+            testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00 via WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates.\n\nDans le cas contraire, la réservation sera annulée du sistema et l'emplacement sera libéré.\n\nMerci pour votre précieuse collaboration !\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Confirmation de Réservation Clients - Araj Beach Club"
         elif lingua_scelta == "Español":
             testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nombre de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_msg}\nAraj Beach Club"
@@ -1043,10 +1047,9 @@ if len(data_visiva) > 0:
                     if widget_key not in st.session_state: st.session_state[widget_key] = "⚡ Azione"
                     colonne_griglia[i].selectbox("Azione Rapida", options=["⚡ Azione", "📍 Presente", "🔄 Libera e Subentra"] + [f"💰 {nome}" for nome in MAPPA_NOMI_RAPIDI.keys()], label_visibility="collapsed", key=widget_key, on_change=applica_azione_rapida, args=(row_idx, widget_key))
                     
-                    # --- NUOVO: FINESTRA SUBENTRO INDIPENDENTE ---
                     if stato_omb in ["Libero_Mat", "Libero_Pom"]:
                         with colonne_griglia[i].popover("➕ Inserisci Subentro", use_container_width=True):
-                            st.write(f"Nuovo cliente (Mezza Giornata)")
+                            st.write(f"Nuovo cliente (Prezzo Intero)")
                             sub_n_key = f"sub_n_{nome_fila}_{numero_omb}"
                             nome_val_sub = st.text_input("Nome Cliente", key=sub_n_key, placeholder="Nome...")
                             if st.button("Salva Subentro", key=f"btn_sub_{nome_fila}_{numero_omb}"):
@@ -1055,7 +1058,8 @@ if len(data_visiva) > 0:
                                     st.error("Inserisci il nome!")
                                 else:
                                     df_temp = carica_prenotazioni()
-                                    pz = calcola_prezzo_automatico(data_inizio_vis, nome_fila, 2, "Mezza Giornata (fino 13 / da 15.30)", [])
+                                    # === MODIFICATO: Il subentrante paga ORA il PREZZO INTERO ===
+                                    pz = calcola_prezzo_automatico(data_inizio_vis, nome_fila, 2, "Giornata Intera", [])
                                     nuova_p = pd.DataFrame([{
                                         "Data": date_range_vis[0], "Fila": nome_fila, "Ombrellone": int(numero_omb),
                                         "Nome": nome_pulito, "Telefono": "", "Stato": "Presente",
