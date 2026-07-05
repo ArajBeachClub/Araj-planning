@@ -785,7 +785,7 @@ if submit:
                     st.sidebar.warning(f"👉 Omb. {row_conf['Ombrellone']} prenotato da {row_conf['Nome']} ({d_ita})")
                     break
 
-        if not conflicto_sidebar:
+        if not conflitto_sidebar:
             if cifre_tel:
                 tel_norm = normalizza_tel(cifre_tel)
                 if not df_clienti.empty:
@@ -916,7 +916,7 @@ if nome_wa and len(date_wa) > 0:
             testo_base = f"Dear Staff at {nome_wa},\n\nWe confirm the reservation {stringa_date_eng}{fila_formattata_eng} for your guests.\n\nPlease notify us of any delays by 11:00 AM via WhatsApp at +39 3391789319, indicating the reference name and dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you for your cooperation!\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Guest Reservation Confirmation - Araj Beach Club"
         elif lingua_scelta == "Français":
-            testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00 via WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates.\n\nDans le cas contraire, la réservation sera annulée du sistema et l'emplacement sera libéré.\n\nMerci pour votre précieuse collaboration !\n\n{operatore_msg}\nAraj Beach Club"
+            testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00 via WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci pour votre précieuse collaboration !\n\n{operatore_msg}\nAraj Beach Club"
             oggetto = "Confirmation de Réservation Clients - Araj Beach Club"
         elif lingua_scelta == "Español":
             testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nombre de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_msg}\nAraj Beach Club"
@@ -1058,7 +1058,6 @@ if len(data_visiva) > 0:
                                     st.error("Inserisci il nome!")
                                 else:
                                     df_temp = carica_prenotazioni()
-                                    # === MODIFICATO: Il subentrante paga ORA il PREZZO INTERO ===
                                     pz = calcola_prezzo_automatico(data_inizio_vis, nome_fila, 2, "Giornata Intera", [])
                                     nuova_p = pd.DataFrame([{
                                         "Data": date_range_vis[0], "Fila": nome_fila, "Ombrellone": int(numero_omb),
