@@ -858,6 +858,18 @@ if not df_pren.empty:
     csv_backup = df_backup.to_csv(index=False, sep=';').encode('utf-8')
     st.sidebar.download_button(label="⬇️ Scarica su Telefono/PC", data=csv_backup, file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv", mime="text/csv", type="primary")
 
+file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup", type=["csv"])
+if file_caricato is not None:
+    if st.sidebar.button("⚠️ Conferma Ripristino"):
+        try:
+            df_ripristino = pd.read_csv(file_caricato, sep=None, engine='python')
+            df_ripristino['Data'] = pd.to_datetime(df_ripristino['Data'], format='%d-%m-%Y', errors='coerce').fillna(pd.to_datetime(df_ripristino['Data'], errors='coerce')).dt.strftime('%Y-%m-%d')
+            df_ripristino.to_csv(FILE_PRENOTAZIONI, index=False)
+            st.sidebar.success("✅ Ripristino completato! Ricarica la pagina.")
+            st.rerun()
+        except Exception:
+            st.sidebar.error("❌ Formato file non valido.")
+
 st.sidebar.markdown("---")
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
 
