@@ -310,6 +310,7 @@ def applica_azione_rapida(idx, widget_key):
         if not df.empty and idx in df.index:
             if azione == "🔄 Libera e Subentra":
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
+                data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
                 
                 # NON ricalcoliamo il prezzo! Lasciamo il prezzo intero di chi c'era prima.
                 nota_prec = str(df.loc[idx, 'Note']) if pd.notna(df.loc[idx, 'Note']) else ""
@@ -332,7 +333,7 @@ def applica_azione_rapida(idx, widget_key):
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
-        st.rerun()
+        
 
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
