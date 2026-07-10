@@ -25,6 +25,7 @@ if 'sb_fila' not in st.session_state: st.session_state['sb_fila'] = "Prima Fila"
 if 'sb_omb' not in st.session_state: st.session_state['sb_omb'] = 1
 if 'reset_form' not in st.session_state: st.session_state['reset_form'] = 0
 
+# Variabili super-blindate per l'auto-compilazione WhatsApp/Email
 if 'wa_tipo' not in st.session_state: st.session_state['wa_tipo'] = "Privato"
 if 'wa_nome' not in st.session_state: st.session_state['wa_nome'] = ""
 if 'wa_tel' not in st.session_state: st.session_state['wa_tel'] = ""
@@ -245,8 +246,10 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     suppl_persona = TARIFFE[stagione][fila][tipo_tariffa][1]
     
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
-        if stagione in ["Alta B", "Alta C"]:
+        if stagione == "Alta B":
             prezzo_base = 26.0 if tipo_tariffa == "Festivo" else 24.0
+        elif stagione == "Alta C" and fila == "Sesta Fila (Altre)":
+            prezzo_base = 28.0 if tipo_tariffa == "Festivo" else 25.0
         elif stagione == "Altissima" and fila == "Sesta Fila (Altre)":
             prezzo_base = 30.0 if tipo_tariffa == "Feriale" else round(prezzo_base * 0.70)
         else:
@@ -388,24 +391,128 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA ---
+# --- 🔍 MOTORE DI RICERCA INTATTO E BLINDATO ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
         if not df_pren.empty:
             parole = ricerca.split()
             mask_nome = pd.Series(True, index=df_pren.index)
-            for p in parole: mask_nome &= df_pren['Nome'].astype(str).str.contains(p, case=False, na=False)
-            ris_df = df_pren[mask_nome | df_pren['Telefono'].astype(str).str.contains(ricerca, na=False) | df_pren['Hotel'].astype(str).str.contains(ricerca, na=False)].sort_values(by="Data")
-            if not ris_df.empty:
-                edited_df = st.data_editor(ris_df, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
-                if st.button("💾 Salva modifiche tabella"):
-                    df_pren_temp = df_pren.drop(ris_df.index)
-                    edited_df['Data'] = pd.to_datetime(edited_df['Data']).dt.strftime('%Y-%m-%d')
-                    df_pren = pd.concat([df_pren_temp, edited_df], ignore_index=True)
-                    df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                    st.success("Modifiche salvate!")
-                    st.rerun()
+            for parola in parole:
+                mask_nome &= df_pren['Nome'].astype(str).str.contains(parola, case=False, na=False)
+            
+            mask_tel = df_pren['Telefono'].astype(str).str.contains(ricerca, case=False, na=False)
+            mask_hotel = df_pren['Hotel'].astype(str).str.contains(ricerca, case=False, na=False)
+            
+            risultati = df_pren[mask_nome | mask_tel | mask_hotel].sort_values(by="Data")
+            
+            if not risultati.empty:
+                st.success(f"Trovate {len(risultati)} prenotazioni. Fai doppio clic sulle celle per modificarle!")
+                colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
+                
+                risultati_filtrati = risultati[colonne_ordine].copy()
+                risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
+                risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
+                
+                edited_df = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
+                
+                if st.button("💾 Salva e Ricalcola Prezzi in Automatico", key="btn_save_ricerca"):
+                    edited_df['Data'] = pd.to_datetime(edited_df['Data'], errors='coerce')
+                    edited_df = edited_df.dropna(subset=['Data'])
+                    
+                    righe_cambiate = {}
+                    for idx in edited_df.index:
+                        if idx in risultati_filtrati.index:
+                            vecchio_rec = risultati_filtrati.loc[idx]
+                            nuovo_rec = edited_df.loc[idx]
+                            if not vecchio_rec.equals(nuovo_rec):
+                                righe_cambiate[idx] = nuovo_rec
+                    
+                    for idx, row_cambiata in righe_cambiate.items():
+                        try:
+                            old_fila = str(risultati_filtrati.loc[idx, 'Fila'])
+                            new_fila = str(row_cambiata['Fila'])
+                            old_durata = str(risultati_filtrati.loc[idx, 'Durata'])
+                            new_durata = str(row_cambiata['Durata'])
+                            old_persone = int(risultati_filtrati.loc[idx, 'Persone'])
+                            new_persone = int(row_cambiata['Persone'])
+                            
+                            old_ex_val = risultati_filtrati.loc[idx, 'Extra']
+                            new_ex_val = row_cambiata['Extra']
+                            old_extra = "" if pd.isna(old_ex_val) or str(old_ex_val).lower() in ['nan', 'none'] else str(old_ex_val).strip()
+                            new_extra = "" if pd.isna(new_ex_val) or str(new_ex_val).lower() in ['nan', 'none'] else str(new_ex_val).strip()
+                            
+                            old_prezzo = float(risultati_filtrati.loc[idx, 'Prezzo_Giorno'])
+                            new_prezzo = float(row_cambiata['Prezzo_Giorno'])
+                            
+                            if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
+                                data_obj = pd.to_datetime(row_cambiata['Data']).date()
+                                extra_list = [new_extra] if new_extra else []
+                                nuovo_pz = calcola_prezzo_automatico(data_obj, new_fila, new_persone, new_durata, extra_list)
+                                
+                                if str(row_cambiata['Incassato_da']) != "Ospite (Gratis)":
+                                    edited_df.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
+                                    edited_df.loc[idx, 'Extra'] = new_extra
+                        except Exception:
+                            pass
+                    
+                    df_pren_temp = df_pren.drop(risultati.index)
+                    has_overlap = False
+                    
+                    for idx, row_cambiata in righe_cambiate.items():
+                        inc = str(row_cambiata['Incassato_da'])
+                        sto = str(row_cambiata['Stato'])
+                        
+                        if inc == "Ospite (Gratis)":
+                            edited_df.loc[idx, 'Prezzo_Giorno'] = 0.0
+                            
+                        if inc not in ["", "nan", "Da saldare"]:
+                            if sto == "Presente":
+                                edited_df.loc[idx, 'Stato'] = "Pres_Pagato"
+                            elif sto in ["Attesa", "Confermato"]:
+                                edited_df.loc[idx, 'Stato'] = "Pagato"
+
+                        stato_finale = edited_df.loc[idx, 'Stato']
+                        d_str = pd.to_datetime(row_cambiata['Data']).strftime('%Y-%m-%d')
+                        fila = row_cambiata['Fila']
+                        omb = int(row_cambiata['Ombrellone'])
+
+                        if stato_finale != "Libero":
+                            overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & 
+                                                   (df_pren_temp['Fila'] == fila) & 
+                                                   (df_pren_temp['Ombrellone'] == omb) &
+                                                   (df_pren_temp['Stato'] != "Libero")]
+                            if not overlap.empty:
+                                reale_conflitto = False
+                                nome_occ = ""
+                                durata_corrente = str(row_cambiata['Durata'])
+                                for _, o_row in overlap.iterrows():
+                                    st_es = str(o_row['Stato'])
+                                    dur_es = str(o_row['Durata'])
+                                    if st_es in ["Libero_Mat", "Libero_Pom"] or ("Mezza" in durata_corrente and "Mezza" in dur_es):
+                                        continue
+                                    else:
+                                        reale_conflitto = True
+                                        nome_occ = str(o_row['Nome'])
+                                        break
+                                
+                                if reale_conflitto:
+                                    st.error(f"🚨 ERRORE: Impossibile salvare! L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {nome_occ}.")
+                                    has_overlap = True
+                                    break
+
+                    if not has_overlap:
+                        df_pren = df_pren_temp
+                        edited_df['Data'] = edited_df['Data'].dt.strftime('%Y-%m-%d')
+                        df_pren = pd.concat([df_pren, edited_df], ignore_index=True)
+                        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+                        backup_istantaneo_telegram("Modifiche salvate da Ricerca")
+                        st.success("✅ Modifiche salvate con successo nel database!")
+                        st.rerun()
+            else:
+                st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
+        else:
+            st.info("Nessuna prenotazione presente nel sistema al momento.")
 
 # --- BARRA LATERALE ---
 st.sidebar.header("📝 Gestione Prenotazioni")
