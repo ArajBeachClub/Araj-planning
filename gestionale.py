@@ -323,7 +323,7 @@ def applica_azione_rapida(idx, widget_key):
                 
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Eseguito Libera e Subentro su indice {idx}")
-                st.success("Postazione liberata! Il vecchio cliente ora paga mezza giornata.")
+                st.success("Postazione liberata per il pomeriggio! Il prezzo e l'incasso del vecchio cliente sono rimasti intatti.")
             elif azione == "📍 Presente":
                 df.loc[idx, 'Stato'] = "Presente"
             elif azione.startswith("💰 "):
@@ -575,6 +575,39 @@ if submit:
         st.session_state['reset_form'] += 1
         st.rerun()
 
+# --- RICALCOLO MASSIVO PREZZI ---
+if st.session_state.get('prezzi_aggiornati') is not None:
+    st.sidebar.success(f"✅ Fatto! {st.session_state['prezzi_aggiornati']} prezzi aggiornati al nuovo listino.")
+    del st.session_state['prezzi_aggiornati']
+
+st.sidebar.markdown("---")
+st.sidebar.subheader("🔄 Aggiornamento Listino")
+st.sidebar.info("Hai cambiato listino? Clicca qui per aggiornare i prezzi di tutte le prenotazioni future già salvate.")
+if st.sidebar.button("⚠️ Applica Nuovi Prezzi a Tutti", type="primary", use_container_width=True):
+    df_update = carica_prenotazioni()
+    if not df_update.empty:
+        df_update['Data_dt'] = pd.to_datetime(df_update['Data'], errors='coerce')
+        oggi_dt = pd.to_datetime(date.today().strftime('%Y-%m-%d'))
+        
+        conteggio = 0
+        for index, riga in df_update.iterrows():
+            if pd.notna(riga['Data_dt']) and riga['Data_dt'] >= oggi_dt:
+                if str(riga['Incassato_da']) in ["Da saldare", "", "nan"]:
+                    data_o = riga['Data_dt'].date()
+                    es_str = str(riga['Extra'])
+                    lista_ex = [x.strip() for x in es_str.split(',')] if es_str and es_str.lower() not in ['nan', 'none', ''] else []
+                    pz_nuovo = calcola_prezzo_automatico(data_o, str(riga['Fila']), int(riga['Persone']), str(riga['Durata']), lista_ex)
+                    
+                    if float(riga['Prezzo_Giorno']) != float(pz_nuovo):
+                        df_update.at[index, 'Prezzo_Giorno'] = float(pz_nuovo)
+                        conteggio += 1
+        
+        df_update = df_update.drop(columns=['Data_dt'])
+        df_update.to_csv(FILE_PRENOTAZIONI, index=False)
+        backup_istantaneo_telegram("Aggiornamento Massivo Prezzi")
+        st.session_state['prezzi_aggiornati'] = conteggio
+        st.rerun()
+
 # --- CONFERME WHATSAPP / EMAIL ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
@@ -593,6 +626,7 @@ fila_fra = fila_ita.replace("Prima Fila", "Première ligne").replace("Seconda Fi
 
 if nome_wa and len(date_wa) > 0:
     d1 = date_wa[0].strftime("%d/%m/%Y")
+    
     if len(date_wa) > 1 and date_wa[0] != date_wa[1]:
         d2 = date_wa[1].strftime("%d/%m/%Y")
         stringa_date_ita = f"dal {d1} al {d2}"
