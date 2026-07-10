@@ -23,6 +23,7 @@ FILE_CLIENTI = 'clienti.csv'
 if 'sb_dates' not in st.session_state: st.session_state['sb_dates'] = []
 if 'sb_fila' not in st.session_state: st.session_state['sb_fila'] = "Prima Fila"
 if 'sb_omb' not in st.session_state: st.session_state['sb_omb'] = 1
+if 'reset_form' not in st.session_state: st.session_state['reset_form'] = 0  # <--- RIGA RIPRISTINATA!
 
 # Variabili super-blindate per l'auto-compilazione WhatsApp/Email
 if 'wa_tipo' not in st.session_state: st.session_state['wa_tipo'] = "Privato"
@@ -335,7 +336,7 @@ def applica_azione_rapida(idx, widget_key):
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
-        
+        st.rerun()
 
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
