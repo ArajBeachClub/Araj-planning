@@ -316,16 +316,14 @@ def applica_azione_rapida(idx, widget_key):
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
                 data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
                 
-                prezzo_mezza = calcola_prezzo_automatico(data_obj, df.loc[idx, 'Fila'], int(df.loc[idx, 'Persone']), "Mezza Giornata (fino 13 / da 15.30)", [])
-                df.loc[idx, 'Prezzo_Giorno'] = prezzo_mezza
-                
+                # NON ricalcoliamo il prezzo! Lasciamo il prezzo intero di chi c'era prima.
                 nota_prec = str(df.loc[idx, 'Note']) if pd.notna(df.loc[idx, 'Note']) else ""
                 df.loc[idx, 'Note'] = f"Mattina (Subentrato). {nota_prec}".strip()
                 df.loc[idx, 'Stato'] = "Libero_Mat"
                 
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Eseguito Libera e Subentro su indice {idx}")
-                st.success("Postazione liberata! Il vecchio cliente ora paga mezza giornata.")
+                st.success("Postazione liberata per il pomeriggio! Il prezzo e l'incasso del vecchio cliente sono rimasti intatti.")
             elif azione == "📍 Presente":
                 df.loc[idx, 'Stato'] = "Presente"
             elif azione.startswith("💰 "):
@@ -337,7 +335,7 @@ def applica_azione_rapida(idx, widget_key):
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
                 backup_istantaneo_telegram(f"Azione rapida su ombrellone ({azione})")
         st.session_state[widget_key] = "⚡ Azione"
-        st.rerun()
+        
 
 def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
     raw_input = st.session_state[widget_key].strip()
@@ -405,6 +403,12 @@ def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
+
+# ==========================================
+# INIZIALIZZAZIONE DATI DOPO LA CONFIGURAZIONE
+# ==========================================
+df_clienti = carica_clienti()
+df_pren = carica_prenotazioni()
 
 operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
