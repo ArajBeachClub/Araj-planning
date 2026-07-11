@@ -243,10 +243,10 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     suppl_persona = TARIFFE[stagione][fila][tipo_tariffa][1]
     
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
-        if stagione == "Alta B":
-            prezzo_base = 26.0 if tipo_tariffa == "Festivo" else 24.0
-        elif stagione == "Alta C" and fila == "Sesta Fila (Altre)":
+        if stagione == "Alta C" and fila == "Sesta Fila (Altre)":
             prezzo_base = 28.0 if tipo_tariffa == "Festivo" else 25.0
+        elif stagione in ["Alta B", "Alta C"]:
+            prezzo_base = 26.0 if tipo_tariffa == "Festivo" else 24.0
         elif stagione == "Altissima" and fila == "Sesta Fila (Altre)":
             prezzo_base = 30.0 if tipo_tariffa == "Feriale" else round(prezzo_base * 0.70)
         else:
@@ -337,7 +337,7 @@ def applica_azione_rapida(idx, widget_key):
 
 
 # =========================================================
-# AUTO-AGGIORNAMENTO SILENZIOSO (NESSUN PULSANTE ROSSO!)
+# AUTO-AGGIORNAMENTO SILENZIOSO (SENZA PULSANTI)
 # =========================================================
 df_pren = carica_prenotazioni()
 if not df_pren.empty:
@@ -348,7 +348,6 @@ if not df_pren.empty:
             d_str = str(df_pren.loc[idx, 'Data']).strip()
             d_pd = pd.to_datetime(d_str, errors='coerce')
             
-            # Questo controllo evita i crash delle date vuote!
             if pd.notna(d_pd):
                 d_r = d_pd.date()
                 if d_r >= oggi_dt:
@@ -360,7 +359,7 @@ if not df_pren.empty:
                         df_pren.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
                         aggiornato_in_silenzio = True
         except Exception:
-            pass # Ignora le righe difettose e va avanti senza bloccarsi
+            pass # Ignora gli errori di data vuota
 
     if aggiornato_in_silenzio:
         df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
@@ -601,6 +600,7 @@ if submit:
         st.session_state['reset_form'] += 1
         st.rerun()
 
+
 # --- CONFERME WHATSAPP / EMAIL ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
@@ -677,7 +677,11 @@ if nome_wa and len(date_wa) > 0:
 data_visiva = st.date_input("📅 Mappa Visiva:", [], format="DD/MM/YYYY")
 if len(data_visiva) > 0:
     data_inizio_vis = data_visiva[0]
-    giorni_totali_vis = 1 if len(data_visiva) == 1 else (data_visiva[1] - data_inizio_vis).days + 1
+    
+    # LA RIGA CANCELLATA PER SBAGLIO ORA È TORNATA
+    data_fine_vis = data_visiva[1] if len(data_visiva) > 1 else data_inizio_vis
+    
+    giorni_totali_vis = (data_fine_vis - data_inizio_vis).days + 1
     date_range_vis = [(data_inizio_vis + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali_vis)]
     df_range = df_pren[df_pren['Data'].isin(date_range_vis)] if not df_pren.empty else pd.DataFrame()
 
@@ -705,8 +709,15 @@ if len(data_visiva) > 0:
                 if not record.empty:
                     ultimo_rec = record.iloc[-1]
                     stato = ultimo_rec['Stato']
-                    colore_box = "#dc3545" if stato == "Confermato" else ("#20c997" if stato == "Pres_Pagato" else "#ffc107")
-                    if stato in ["Libero_Mat", "Libero_Pom"]: colore_box = "#17a2b8"
+                    
+                    # LOGICA DEI COLORI RIPARATA (IL VIOLA È TORNATO)
+                    if stato == "Attesa": colore_box = "#ffc107"
+                    elif stato == "Confermato": colore_box = "#dc3545"
+                    elif stato == "Pagato": colore_box = "#007bff"
+                    elif stato == "Presente": colore_box = "#6f42c1"
+                    elif stato == "Pres_Pagato": colore_box = "#20c997" 
+                    elif stato in ["Libero_Mat", "Libero_Pom"]: colore_box = "#17a2b8"
+                    else: colore_box = "#6c757d"
                     
                     pers = ultimo_rec.get('Persone', 2)
                     pz = float(ultimo_rec.get('Prezzo_Giorno', 0.0))
@@ -784,6 +795,7 @@ if len(data_visiva) > 0:
                             st.session_state['sb_omb'] = int(numero_omb)
                             st.rerun()
     else:
+        # LOGICA RICERCA PIU GIORNI RIPARATA
         data_in_ita = data_inizio_vis.strftime("%d/%m")
         data_fin_ita = data_fine_vis.strftime("%d/%m")
         st.header(f"🗓️ Radar Disponibilità Continua ({data_in_ita} - {data_fin_ita})")
