@@ -9,6 +9,7 @@ Created on Wed May 27 17:48:43 2026
 import streamlit as st
 import pandas as pd
 import os
+import shutil
 from datetime import date, timedelta, datetime
 import urllib.parse
 import urllib.request
@@ -224,7 +225,7 @@ def trova_stagione(data_sel):
         for inizio, fine in intervalli:
             if inizio <= data_sel <= fine:
                 return stagione
-    return "Media 1"
+    return "Alta B"
 
 def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     stagione = trova_stagione(data_sel)
@@ -242,10 +243,10 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     suppl_persona = TARIFFE[stagione][fila][tipo_tariffa][1]
     
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
-        if stagione == "Alta B":
-            prezzo_base = 26.0 if tipo_tariffa == "Festivo" else 24.0
-        elif stagione == "Alta C" and fila == "Sesta Fila (Altre)":
+        if stagione == "Alta C" and fila == "Sesta Fila (Altre)":
             prezzo_base = 28.0 if tipo_tariffa == "Festivo" else 25.0
+        elif stagione in ["Alta B", "Alta C"]:
+            prezzo_base = 26.0 if tipo_tariffa == "Festivo" else 24.0
         elif stagione == "Altissima" and fila == "Sesta Fila (Altre)":
             prezzo_base = 30.0 if tipo_tariffa == "Feriale" else round(prezzo_base * 0.70)
         else:
@@ -336,6 +337,47 @@ def applica_azione_rapida(idx, widget_key):
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
+
+# =========================================================
+# PULSANTE GIGANTE PER FORZARE L'AGGIORNAMENTO DEI PREZZI!
+# =========================================================
+st.error("⚠️ **AGGIORNAMENTO LISTINO ALTA STAGIONE C** ⚠️\nHai prenotazioni vecchie con il prezzo sbagliato? Clicca il pulsante qui sotto!")
+if st.button("🔄 CLICCA QUI: AGGIORNA TUTTI I PREZZI DA OGGI IN POI", type="primary", use_container_width=True):
+    df_update = carica_prenotazioni()
+    if not df_update.empty:
+        count = 0
+        oggi_date = date.today()
+        for index, riga in df_update.iterrows():
+            try:
+                # Estrazione data a prova di bomba (legge sia 11-07-2026 che 2026-07-11)
+                d_str = str(riga['Data']).strip()
+                if "-" in d_str:
+                    parts = d_str.split("-")
+                    if len(parts[0]) == 4: d_r = date(int(parts[0]), int(parts[1]), int(parts[2]))
+                    else: d_r = date(int(parts[2]), int(parts[1]), int(parts[0]))
+                elif "/" in d_str:
+                    parts = d_str.split("/")
+                    if len(parts[0]) == 4: d_r = date(int(parts[0]), int(parts[1]), int(parts[2]))
+                    else: d_r = date(int(parts[2]), int(parts[1]), int(parts[0]))
+                else:
+                    d_r = pd.to_datetime(d_str).date()
+            except:
+                continue
+                
+            # Se la data è da oggi in poi, aggiorniamo il prezzo forzatamente
+            if d_r >= oggi_date:
+                es_str = str(riga['Extra'])
+                lista_ex = [x.strip() for x in es_str.split(',')] if es_str and es_str.lower() not in ['nan', 'none', ''] else []
+                pz_nuovo = calcola_prezzo_automatico(d_r, str(riga['Fila']), int(riga['Persone']), str(riga['Durata']), lista_ex)
+                
+                if float(riga['Prezzo_Giorno']) != float(pz_nuovo):
+                    df_update.at[index, 'Prezzo_Giorno'] = float(pz_nuovo)
+                    count += 1
+                    
+        df_update.to_csv(FILE_PRENOTAZIONI, index=False)
+        st.success(f"✅ PERFETTO! Sono stati corretti e aggiornati {count} prezzi nel database. Ricarica la pagina se non li vedi subito sulla mappa.")
+
+st.divider()
 
 df_clienti = carica_clienti()
 df_pren = carica_prenotazioni()
@@ -572,38 +614,6 @@ if submit:
         st.session_state['reset_form'] += 1
         st.rerun()
 
-# --- RICALCOLO MASSIVO PREZZI ---
-if st.session_state.get('prezzi_aggiornati') is not None:
-    st.sidebar.success(f"✅ Fatto! {st.session_state['prezzi_aggiornati']} prezzi aggiornati al nuovo listino dall'11 luglio in poi.")
-    del st.session_state['prezzi_aggiornati']
-
-st.sidebar.markdown("---")
-st.sidebar.subheader("🔄 Aggiornamento Listino")
-st.sidebar.info("Clicca qui per aggiornare i prezzi di TUTTE le prenotazioni future (da oggi in poi) con il nuovo listino dell'Alta C.")
-if st.sidebar.button("⚠️ Applica Nuovi Prezzi a Tutti", type="primary", use_container_width=True):
-    df_update = carica_prenotazioni()
-    if not df_update.empty:
-        df_update['Data_dt'] = pd.to_datetime(df_update['Data'], errors='coerce')
-        oggi_dt = pd.to_datetime(date.today().strftime('%Y-%m-%d'))
-        
-        conteggio = 0
-        for index, riga in df_update.iterrows():
-            if pd.notna(riga['Data_dt']) and riga['Data_dt'] >= oggi_dt:
-                data_o = riga['Data_dt'].date()
-                es_str = str(riga['Extra'])
-                lista_ex = [x.strip() for x in es_str.split(',')] if es_str and es_str.lower() not in ['nan', 'none', ''] else []
-                pz_nuovo = calcola_prezzo_automatico(data_o, str(riga['Fila']), int(riga['Persone']), str(riga['Durata']), lista_ex)
-                
-                if float(riga['Prezzo_Giorno']) != float(pz_nuovo):
-                    df_update.at[index, 'Prezzo_Giorno'] = float(pz_nuovo)
-                    conteggio += 1
-        
-        df_update = df_update.drop(columns=['Data_dt'])
-        df_update.to_csv(FILE_PRENOTAZIONI, index=False)
-        backup_istantaneo_telegram("Aggiornamento Massivo Prezzi")
-        st.session_state['prezzi_aggiornati'] = conteggio
-        st.rerun()
-
 # --- CONFERME WHATSAPP / EMAIL ---
 st.sidebar.markdown("---")
 st.sidebar.subheader("💬 Invia Conferma (Gratis)")
@@ -648,7 +658,7 @@ if nome_wa and len(date_wa) > 0:
             testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us promptly by sending a WhatsApp message to +39 3391789319, indicating your reference name and reservation dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you and see you soon!\n\n{operatore_attivo}"
             oggetto = "Reservation Confirmation - Araj Beach Club"
         elif lingua_scelta == "Français":
-            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du sistema et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
+            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
             oggetto = "Confirmation de Réservation - Araj Beach Club"
         elif lingua_scelta == "Español":
             testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, le rogamos que avise a tiempo enviando un mensaje de WhatsApp al número +39 3391789319, indicando el nombre de referencia y las fechas de la reserva.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias y hasta pronto!\n\n{operatore_attivo}"
@@ -666,7 +676,7 @@ if nome_wa and len(date_wa) > 0:
         elif lingua_scelta == "Español":
             testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nombre de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_attivo}\nAraj Beach Club"
             oggetto = "Confirmación de Reserva de Huéspedes - Araj Beach Club"
-            
+
     testo_url = urllib.parse.quote(testo_base)
     oggetto_url = urllib.parse.quote(oggetto)
     
