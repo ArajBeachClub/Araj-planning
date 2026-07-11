@@ -9,7 +9,6 @@ Created on Wed May 27 17:48:43 2026
 import streamlit as st
 import pandas as pd
 import os
-import shutil
 from datetime import date, timedelta, datetime
 import urllib.parse
 import urllib.request
@@ -18,21 +17,19 @@ FILE_PRENOTAZIONI = 'prenotazioni.csv'
 FILE_CLIENTI = 'clienti.csv'
 
 # ==========================================
-# INIZIALIZZAZIONE MEMORIA (Per Automazioni)
+# INIZIALIZZAZIONE MEMORIA
 # ==========================================
 if 'sb_dates' not in st.session_state: st.session_state['sb_dates'] = []
 if 'sb_fila' not in st.session_state: st.session_state['sb_fila'] = "Prima Fila"
 if 'sb_omb' not in st.session_state: st.session_state['sb_omb'] = 1
 if 'reset_form' not in st.session_state: st.session_state['reset_form'] = 0
 
-# Variabili super-blindate per l'auto-compilazione WhatsApp/Email
 if 'wa_tipo' not in st.session_state: st.session_state['wa_tipo'] = "Privato"
 if 'wa_nome' not in st.session_state: st.session_state['wa_nome'] = ""
 if 'wa_tel' not in st.session_state: st.session_state['wa_tel'] = ""
 if 'wa_email' not in st.session_state: st.session_state['wa_email'] = ""
 if 'wa_dates' not in st.session_state: st.session_state['wa_dates'] = []
 if 'wa_fila' not in st.session_state: st.session_state['wa_fila'] = ""
-
 if 'map_error' not in st.session_state: st.session_state['map_error'] = ""
 
 # ==========================================
@@ -51,7 +48,7 @@ MAPPA_NOMI_RAPIDI = {
 }
 
 # ==========================================
-# 🤖 BOT TELEGRAM E BACKUP IN TEMPO REALE
+# 🤖 BOT TELEGRAM 
 # ==========================================
 TELEGRAM_TOKEN = "8804050943:AAHvXVmSnEUPlvV6mj33JGGQHfhosnqcC2U"
 TELEGRAM_CHAT_ID = "8663794616"  
@@ -102,9 +99,8 @@ def normalizza_tel(t):
     return t
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE STRUTTURA SPIAGGIA
+# ⚙️ CONFIGURAZIONE STRUTTURA E TARIFFE 2026
 # ==========================================
-
 CAPIENZA_FILE = {
     "Prima Fila": 17,
     "Seconda Fila": 17,
@@ -317,6 +313,7 @@ def applica_azione_rapida(idx, widget_key):
                 df.loc[idx, 'Durata'] = "Mezza Giornata (fino 13 / da 15.30)"
                 data_obj = pd.to_datetime(df.loc[idx, 'Data']).date()
                 
+                # NON ricalcoliamo il prezzo del vecchio cliente, resta intero!
                 nota_prec = str(df.loc[idx, 'Note']) if pd.notna(df.loc[idx, 'Note']) else ""
                 df.loc[idx, 'Note'] = f"Mattina (Subentrato). {nota_prec}".strip()
                 df.loc[idx, 'Stato'] = "Libero_Mat"
@@ -577,12 +574,12 @@ if submit:
 
 # --- RICALCOLO MASSIVO PREZZI ---
 if st.session_state.get('prezzi_aggiornati') is not None:
-    st.sidebar.success(f"✅ Fatto! {st.session_state['prezzi_aggiornati']} prezzi aggiornati al nuovo listino.")
+    st.sidebar.success(f"✅ Fatto! {st.session_state['prezzi_aggiornati']} prezzi aggiornati al nuovo listino dall'11 luglio in poi.")
     del st.session_state['prezzi_aggiornati']
 
 st.sidebar.markdown("---")
 st.sidebar.subheader("🔄 Aggiornamento Listino")
-st.sidebar.info("Hai cambiato listino? Clicca qui per aggiornare i prezzi di tutte le prenotazioni future già salvate.")
+st.sidebar.info("Clicca qui per aggiornare i prezzi di TUTTE le prenotazioni future (da oggi in poi) con il nuovo listino dell'Alta C.")
 if st.sidebar.button("⚠️ Applica Nuovi Prezzi a Tutti", type="primary", use_container_width=True):
     df_update = carica_prenotazioni()
     if not df_update.empty:
@@ -592,15 +589,14 @@ if st.sidebar.button("⚠️ Applica Nuovi Prezzi a Tutti", type="primary", use_
         conteggio = 0
         for index, riga in df_update.iterrows():
             if pd.notna(riga['Data_dt']) and riga['Data_dt'] >= oggi_dt:
-                if str(riga['Incassato_da']) in ["Da saldare", "", "nan"]:
-                    data_o = riga['Data_dt'].date()
-                    es_str = str(riga['Extra'])
-                    lista_ex = [x.strip() for x in es_str.split(',')] if es_str and es_str.lower() not in ['nan', 'none', ''] else []
-                    pz_nuovo = calcola_prezzo_automatico(data_o, str(riga['Fila']), int(riga['Persone']), str(riga['Durata']), lista_ex)
-                    
-                    if float(riga['Prezzo_Giorno']) != float(pz_nuovo):
-                        df_update.at[index, 'Prezzo_Giorno'] = float(pz_nuovo)
-                        conteggio += 1
+                data_o = riga['Data_dt'].date()
+                es_str = str(riga['Extra'])
+                lista_ex = [x.strip() for x in es_str.split(',')] if es_str and es_str.lower() not in ['nan', 'none', ''] else []
+                pz_nuovo = calcola_prezzo_automatico(data_o, str(riga['Fila']), int(riga['Persone']), str(riga['Durata']), lista_ex)
+                
+                if float(riga['Prezzo_Giorno']) != float(pz_nuovo):
+                    df_update.at[index, 'Prezzo_Giorno'] = float(pz_nuovo)
+                    conteggio += 1
         
         df_update = df_update.drop(columns=['Data_dt'])
         df_update.to_csv(FILE_PRENOTAZIONI, index=False)
@@ -652,7 +648,7 @@ if nome_wa and len(date_wa) > 0:
             testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us promptly by sending a WhatsApp message to +39 3391789319, indicating your reference name and reservation dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you and see you soon!\n\n{operatore_attivo}"
             oggetto = "Reservation Confirmation - Araj Beach Club"
         elif lingua_scelta == "Français":
-            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
+            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du sistema et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
             oggetto = "Confirmation de Réservation - Araj Beach Club"
         elif lingua_scelta == "Español":
             testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, le rogamos que avise a tiempo enviando un mensaje de WhatsApp al número +39 3391789319, indicando el nombre de referencia y las fechas de la reserva.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias y hasta pronto!\n\n{operatore_attivo}"
@@ -670,7 +666,7 @@ if nome_wa and len(date_wa) > 0:
         elif lingua_scelta == "Español":
             testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nombre de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_attivo}\nAraj Beach Club"
             oggetto = "Confirmación de Reserva de Huéspedes - Araj Beach Club"
-
+            
     testo_url = urllib.parse.quote(testo_base)
     oggetto_url = urllib.parse.quote(oggetto)
     
