@@ -27,8 +27,7 @@ if 'wa_tipo' not in st.session_state: st.session_state['wa_tipo'] = "Privato"
 if 'wa_nome' not in st.session_state: st.session_state['wa_nome'] = ""
 if 'wa_tel' not in st.session_state: st.session_state['wa_tel'] = ""
 if 'wa_email' not in st.session_state: st.session_state['wa_email'] = ""
-if 'wa_dates' not in st.session_state: st.session_state['wa_dates'] = []
-if 'wa_fila' not in st.session_state: st.session_state['wa_fila'] = ""
+
 if 'map_error' not in st.session_state: st.session_state['map_error'] = ""
 
 # ==========================================
@@ -57,8 +56,8 @@ def normalizza_tel(t):
 # ⚙️ CONFIGURAZIONE STRUTTURA E TARIFFE 2026
 # ==========================================
 CAPIENZA_FILE = {
-    "Prima Fila": 17,
-    "Seconda Fila": 17,
+    "Prima Fila": 21,    # AGGIORNATO (17 + 4)
+    "Seconda Fila": 21,  # AGGIORNATO (17 + 4)
     "Terza Fila": 12,
     "Quarta Fila": 10,
     "Quinta Fila": 7,
@@ -226,38 +225,29 @@ def carica_clienti():
     return pd.DataFrame(columns=["Telefono", "Nome"])
 
 def carica_prenotazioni():
+    colonne_base = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"]
     if os.path.exists(FILE_PRENOTAZIONI):
         try:
             df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
-            if "Hotel" not in df.columns: df["Hotel"] = ""
-            if "Persone" not in df.columns: df["Persone"] = 2
-            if "Durata" not in df.columns: df["Durata"] = "Giornata Intera"
-            if "Extra" not in df.columns: df["Extra"] = ""
-            if "Nome" not in df.columns: df["Nome"] = "" 
-            if "Note" not in df.columns: df["Note"] = ""
-            if "Operatore" not in df.columns: df["Operatore"] = ""
-            if "Incassato_da" not in df.columns: df["Incassato_da"] = "Da saldare"
-            if "Sconto" not in df.columns: df["Sconto"] = 0.0
-            if "Telefono" not in df.columns: df["Telefono"] = ""
-            if "Ombrellone" not in df.columns: df["Ombrellone"] = 1
-            
-            colonne_testo = ["Nome", "Telefono", "Hotel", "Durata", "Extra", "Note", "Operatore", "Incassato_da", "Stato"]
-            for col in colonne_testo:
-                if col in df.columns:
-                    df[col] = df[col].fillna("")
-                    df[col] = df[col].apply(lambda x: "" if str(x).strip().lower() in ["none", "nan", ""] else str(x).strip())
-            
-            colonne_intere = ["Ombrellone", "Persone"]
-            for col in colonne_intere:
-                if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(1).astype(int)
-            
-            colonne_decimali = ["Prezzo_Giorno", "Sconto"]
-            for col in colonne_decimali:
-                if col in df.columns: df[col] = pd.to_numeric(df[col], errors='coerce').fillna(0.0)
+            # Assicuriamoci che tutte le colonne esistano per evitare errori
+            for col in colonne_base:
+                if col not in df.columns:
+                    df[col] = ""
                     
+            df['Nome'] = df['Nome'].fillna("").apply(lambda x: "" if str(x).strip().lower() in ["none", "nan", ""] else str(x).strip())
+            df['Hotel'] = df['Hotel'].fillna("").apply(lambda x: "" if str(x).strip().lower() in ["none", "nan", ""] else str(x).strip())
+            df['Note'] = df['Note'].fillna("").apply(lambda x: "" if str(x).strip().lower() in ["none", "nan", ""] else str(x).strip())
+            df['Extra'] = df['Extra'].fillna("").apply(lambda x: "" if str(x).strip().lower() in ["none", "nan", ""] else str(x).strip())
+            
+            df['Ombrellone'] = pd.to_numeric(df['Ombrellone'], errors='coerce').fillna(1).astype(int)
+            df['Persone'] = pd.to_numeric(df['Persone'], errors='coerce').fillna(2).astype(int)
+            df['Prezzo_Giorno'] = pd.to_numeric(df['Prezzo_Giorno'], errors='coerce').fillna(0.0)
+            df['Sconto'] = pd.to_numeric(df['Sconto'], errors='coerce').fillna(0.0)
+            
             return df
-        except Exception: pass
-    return pd.DataFrame(columns=["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Prezzo_Giorno", "Sconto", "Hotel", "Persone", "Durata", "Extra", "Note", "Operatore", "Incassato_da"])
+        except Exception: 
+            pass
+    return pd.DataFrame(columns=colonne_base)
 
 def applica_azione_rapida(idx, widget_key):
     azione = st.session_state[widget_key]
@@ -283,39 +273,74 @@ def applica_azione_rapida(idx, widget_key):
             if azione != "🔄 Libera e Subentra":
                 df.to_csv(FILE_PRENOTAZIONI, index=False)
         st.session_state[widget_key] = "⚡ Azione"
-        st.rerun()
+        # RIMOSSO RERUN QUI PER EVITARE L'ERRORE ROSSO
 
-# =========================================================
-# AUTO-AGGIORNAMENTO SILENZIOSO
-# =========================================================
-df_pren = carica_prenotazioni()
-if not df_pren.empty:
-    aggiornato_in_silenzio = False
-    oggi_dt = date.today()
-    for idx in df_pren.index:
-        try:
-            d_str = str(df_pren.loc[idx, 'Data']).strip()
-            d_pd = pd.to_datetime(d_str, errors='coerce')
+def gestisci_input_mappa(fila, omb, data_str, widget_key, operatore_default):
+    raw_input = st.session_state[widget_key].strip()
+    if raw_input:
+        data_obj = datetime.strptime(data_str, "%Y-%m-%d").date()
+        is_future = data_obj > date.today()
+        
+        nome_pulito = raw_input.replace(".", " ").strip()
+        parole = nome_pulito.split()
+        
+        if len(nome_pulito) == 0:
+            st.session_state[widget_key] = ""
+            return
+        if is_future and len(parole) < 2:
+            st.session_state[widget_key] = ""
+            return
             
-            if pd.notna(d_pd):
-                d_r = d_pd.date()
-                if d_r >= oggi_dt:
-                    es_str = str(df_pren.loc[idx, 'Extra'])
-                    lista_ex = [x.strip() for x in es_str.split(',')] if es_str and es_str.lower() not in ['nan', 'none', ''] else []
-                    pz_calc = calcola_prezzo_automatico(d_r, str(df_pren.loc[idx, 'Fila']), int(df_pren.loc[idx, 'Persone']), str(df_pren.loc[idx, 'Durata']), lista_ex)
+        nome_cliente = nome_pulito
+        operatore_finale = operatore_default
+        
+        if "-" in raw_input:
+            parti = raw_input.split("-")
+            nome_cliente = parti[0].strip()
+            iniziale = parti[-1].strip().upper()
+            for op in OPERATORI_SPIAGGIA:
+                if op.upper().startswith(iniziale):
+                    operatore_finale = op
+                    break
                     
-                    if float(df_pren.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
-                        df_pren.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
-                        aggiornato_in_silenzio = True
-        except Exception:
-            pass 
+        modalita = st.session_state.get('map_mode', "⚡ Salva Subito")
+        if "Sinistra" in modalita:
+            st.session_state['sb_dates'] = (data_obj, data_obj)
+            st.session_state['sb_fila'] = fila
+            st.session_state['sb_omb'] = int(omb)
+            st.session_state['sb_operatore'] = operatore_finale
+            rk = st.session_state.get('reset_form', 0)
+            st.session_state[f'form_nome_{rk}'] = nome_cliente
+            st.session_state[widget_key] = "" 
+        else:
+            df = carica_prenotazioni()
+            is_subentro = False
+            if not df.empty:
+                esistenti = df[(df['Data'] == data_str) & (df['Fila'] == fila) & (df['Ombrellone'] == int(omb))]
+                if not esistenti.empty and esistenti.iloc[-1]['Stato'] in ["Libero_Mat", "Libero_Pom"]:
+                    is_subentro = True
 
-    if aggiornato_in_silenzio:
-        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-
+            durata_assegnata = "Mezza Giornata (fino 13 / da 15.30)" if is_subentro else "Giornata Intera"
+            prezzo = calcola_prezzo_automatico(data_obj, fila, 2, "Giornata Intera", [])
+            stato_automatico = "Confermato" if is_future else "Presente"
+            
+            nuova_p = pd.DataFrame([{
+                "Data": data_str, "Fila": fila, "Ombrellone": int(omb),
+                "Nome": nome_cliente, "Telefono": "", "Stato": stato_automatico,
+                "Prezzo_Giorno": prezzo, "Sconto": 0.0, "Hotel": "",
+                "Persone": 2, "Durata": durata_assegnata, "Extra": "",
+                "Note": "Subentro pomeridiano" if is_subentro else "", "Operatore": operatore_finale, "Incassato_da": "Da saldare"
+            }])
+            df = nuova_p if df.empty else pd.concat([df, nuova_p], ignore_index=True)
+            df.to_csv(FILE_PRENOTAZIONI, index=False)
+            st.session_state[widget_key] = "" 
+        # RIMOSSO RERUN QUI PER EVITARE L'ERRORE ROSSO
 
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
+
+df_clienti = carica_clienti()
+df_pren = carica_prenotazioni()
 
 operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
@@ -364,7 +389,7 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA INTATTO E BLINDATO ---
+# --- 🔍 MOTORE DI RICERCA (BLINDATO: SALVATAGGIO GARANTITO E CANCELLAZIONI) ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
@@ -380,7 +405,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             risultati = df_pren[mask_nome | mask_tel | mask_hotel].sort_values(by="Data")
             
             if not risultati.empty:
-                st.success(f"Trovate {len(risultati)} prenotazioni. Fai le tue modifiche qui sotto e premi Salva!")
+                st.success(f"Trovate {len(risultati)} prenotazioni.")
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Sconto", "Persone", "Durata", "Extra", "Note"]
                 
                 risultati_filtrati = risultati[colonne_ordine].copy()
@@ -388,36 +413,33 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
                 with st.form("form_ricerca"):
+                    st.info("💡 Modifica quello che vuoi (o cancella col cestino) e premi SALVA MODIFICHE.")
                     edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE)
-                    btn_save_ricerca = st.form_submit_button("💾 Salva e Ricalcola Prezzi in Automatico", type="primary")
+                    btn_save_ricerca = st.form_submit_button("💾 Salva Modifiche", type="primary")
                 
                 if btn_save_ricerca:
                     edited_search['Data'] = pd.to_datetime(edited_search['Data'], errors='coerce')
                     edited_search = edited_search.dropna(subset=['Data'])
                     
-                    df_pren_temp = df_pren.drop(risultati.index)
-                    has_overlap = False
-                    
+                    # Ricalcolo prezzi per le righe modificate
                     for idx in edited_search.index:
                         row_new = edited_search.loc[idx]
                         if idx in risultati_filtrati.index:
                             row_old = risultati_filtrati.loc[idx]
-                            old_fila = str(row_old['Fila'])
-                            new_fila = str(row_new['Fila'])
-                            old_durata = str(row_old['Durata'])
-                            new_durata = str(row_new['Durata'])
-                            old_persone = int(row_old['Persone'])
-                            new_persone = int(row_new['Persone'])
-                            old_prezzo = float(row_old['Prezzo_Giorno'])
-                            new_prezzo = float(row_new['Prezzo_Giorno'])
+                            old_fila, new_fila = str(row_old['Fila']), str(row_new['Fila'])
+                            old_durata, new_durata = str(row_old['Durata']), str(row_new['Durata'])
+                            old_persone, new_persone = int(row_old['Persone']), int(row_new['Persone'])
+                            old_prezzo, new_prezzo = float(row_old['Prezzo_Giorno']), float(row_new['Prezzo_Giorno'])
                             
                             old_extra = "" if pd.isna(row_old['Extra']) else str(row_old['Extra']).strip()
                             new_extra = "" if pd.isna(row_new['Extra']) else str(row_new['Extra']).strip()
                             
                             if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
                                 pz = calcola_prezzo_automatico(row_new['Data'].date(), new_fila, new_persone, new_durata, [new_extra] if new_extra else [])
-                                edited_search.loc[idx, 'Prezzo_Giorno'] = pz
+                                edited_search.loc[idx, 'Prezzo_Giorno'] = float(pz)
+                                edited_search.loc[idx, 'Extra'] = new_extra
                                 
+                        # Logica pagamenti e stati
                         inc = str(edited_search.loc[idx, 'Incassato_da'])
                         sto = str(edited_search.loc[idx, 'Stato'])
                         if inc == "Ospite (Gratis)": edited_search.loc[idx, 'Prezzo_Giorno'] = 0.0
@@ -425,25 +447,14 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                             if sto == "Presente": edited_search.loc[idx, 'Stato'] = "Pres_Pagato"
                             elif sto in ["Attesa", "Confermato"]: edited_search.loc[idx, 'Stato'] = "Pagato"
 
-                        stato_finale = edited_search.loc[idx, 'Stato']
-                        if stato_finale != "Libero":
-                            d_str = pd.to_datetime(row_new['Data']).strftime('%Y-%m-%d')
-                            fila = row_new['Fila']
-                            omb = int(row_new['Ombrellone'])
-                            overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & (df_pren_temp['Fila'] == fila) & (df_pren_temp['Ombrellone'] == omb) & (df_pren_temp['Stato'] != "Libero")]
-                            if not overlap.empty:
-                                for _, o_row in overlap.iterrows():
-                                    if str(o_row['Stato']) not in ["Libero_Mat", "Libero_Pom"] and not ("Mezza" in str(row_new['Durata']) and "Mezza" in str(o_row['Durata'])):
-                                        st.error(f"🚨 ERRORE: L'ombrellone {omb} in {fila} del {pd.to_datetime(d_str).strftime('%d/%m/%Y')} è già occupato da {o_row['Nome']}.")
-                                        has_overlap = True
-                                        break
-                                        
-                    if not has_overlap:
-                        edited_search['Data'] = pd.to_datetime(edited_search['Data']).dt.strftime('%Y-%m-%d')
-                        df_pren = pd.concat([df_pren_temp, edited_search], ignore_index=True)
-                        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                        st.success("✅ Modifiche salvate con successo nel database!")
-                        st.rerun()
+                    # Elimino DAL DATABASE TUTTE le vecchie righe che c'erano nella ricerca, 
+                    # e INCOLLO le nuove. Così se hai eliminato col cestino, spariscono per sempre! Nessun blocco di sovrapposizione.
+                    edited_search['Data'] = edited_search['Data'].dt.strftime('%Y-%m-%d')
+                    df_pren_new = df_pren.drop(index=risultati_filtrati.index)
+                    df_pren_new = pd.concat([df_pren_new, edited_search], ignore_index=True)
+                    df_pren_new.to_csv(FILE_PRENOTAZIONI, index=False)
+                    st.success("✅ Modifiche salvate con successo!")
+                    st.rerun()
             else:
                 st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
         else:
@@ -537,7 +548,7 @@ if not df_pren.empty:
     df_backup = df_pren.copy()
     df_backup['Data'] = pd.to_datetime(df_backup['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
     csv_backup = df_backup.to_csv(index=False, sep=';').encode('utf-8')
-    st.sidebar.download_button(label="⬇️ Scarica su Telefono/PC", data=csv_backup, file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv", mime="text/csv", type="primary")
+    st.sidebar.download_button(label="⬇️ Scarica Backup (Sicurezza)", data=csv_backup, file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv", mime="text/csv", type="primary")
 
 file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup", type=["csv"])
 if file_caricato is not None:
@@ -748,7 +759,7 @@ if len(data_visiva) > 0:
             colonne_griglia = st.columns(max_posti) 
             for i in range(max_posti):
                 numero_omb = i + 1
-                record = df_range[(df_range['Ombrellone'] == numero_omb) & (df_range['Fila'] == nome_fila)]
+                record = df_range[(df_range['Ombrellone'] == numero_omb) & (df_range['Fila'] == nome_fila) & (df_range['Stato'] != 'Libero')]
                 if record.empty:
                     box_html = f"<div style='background-color: #28a745; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Libero Sempre</span></div>"
                 else:
@@ -756,7 +767,7 @@ if len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE BLINDATA CON FORM (SALVA SUBITO AL CLIC)
+    # TABELLA MODIFICABILE BLINDATA CON FORM
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
@@ -806,27 +817,10 @@ if len(data_visiva) > 0:
                     if sto == "Presente": edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
                     elif sto in ["Attesa", "Confermato"]: edited_range.loc[idx, 'Stato'] = "Pagato"
 
-            df_pren_temp = df_pren.drop(index=df_range.index)
-            has_overlap = False
-            for idx in edited_range.index:
-                row = edited_range.loc[idx]
-                stato_finale = row['Stato']
-                if stato_finale != "Libero":
-                    d_str = pd.to_datetime(row['Data']).strftime('%Y-%m-%d')
-                    fila = row['Fila']
-                    omb = int(row['Ombrellone'])
-                    
-                    overlap = df_pren_temp[(df_pren_temp['Data'] == d_str) & (df_pren_temp['Fila'] == fila) & (df_pren_temp['Ombrellone'] == omb) & (df_pren_temp['Stato'] != "Libero")]
-                    if not overlap.empty:
-                        for _, o_row in overlap.iterrows():
-                            if str(o_row['Stato']) not in ["Libero_Mat", "Libero_Pom"] and not ("Mezza" in str(row['Durata']) and "Mezza" in str(o_row['Durata'])):
-                                st.error(f"🚨 ERRORE: L'ombrellone {omb} in {fila} del {d_str} è già occupato da {o_row['Nome']}.")
-                                has_overlap = True
-                                break
-            
-            if not has_overlap:
-                edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
-                df_pren = pd.concat([df_pren_temp, edited_range], ignore_index=True)
-                df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                st.success("✅ Modifiche ed eliminazioni salvate con successo!")
-                st.rerun()
+            # Elimina vecchie righe e incolla le nuove
+            edited_range['Data'] = pd.to_datetime(edited_range['Data']).dt.strftime('%Y-%m-%d')
+            df_pren_new = df_pren.drop(index=df_range_edit.index)
+            df_pren_new = pd.concat([df_pren_new, edited_range], ignore_index=True)
+            df_pren_new.to_csv(FILE_PRENOTAZIONI, index=False)
+            st.success("✅ Modifiche ed eliminazioni salvate con successo!")
+            st.rerun()
