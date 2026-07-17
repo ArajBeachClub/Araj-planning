@@ -54,7 +54,6 @@ def backup_istantaneo_telegram(azione_eseguita):
             ora_attuale = ora_italia.strftime('%H:%M:%S')
             data_oggi = ora_italia.strftime('%d-%m-%Y')
             
-            # Leggiamo e sistemiamo le date per il file inviato
             df_bkp = pd.read_csv(FILE_PRENOTAZIONI)
             df_bkp['Data'] = pd.to_datetime(df_bkp['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
             file_temp = f"Backup_Temporaneo.csv"
@@ -87,7 +86,7 @@ def backup_istantaneo_telegram(azione_eseguita):
             pass
 
 # ==========================================
-# FUNZIONI DI SUPPORTO (PULIZIA NOMI E TEL)
+# FUNZIONI DI SUPPORTO (PULIZIA E SICUREZZA)
 # ==========================================
 def normalizza_tel(t):
     if not t or pd.isna(t): return ""
@@ -96,16 +95,23 @@ def normalizza_tel(t):
     return t
 
 def pulisci_nome(nome_grezzo):
-    # Toglie spazi doppi e mette le maiuscole corrette per unire i conti
     if pd.isna(nome_grezzo) or str(nome_grezzo).strip().lower() in ["none", "nan", ""]: return ""
     return " ".join(str(nome_grezzo).split()).title()
+
+def ottieni_mese_sicuro(mese_num):
+    # Questa funzione corazzata previene il crash che hai appena avuto!
+    mesi = {1: "Gennaio", 2: "Febbraio", 3: "Marzo", 4: "Aprile", 5: "Maggio", 6: "Giugno", 7: "Luglio", 8: "Agosto", 9: "Settembre", 10: "Ottobre", 11: "Novembre", 12: "Dicembre"}
+    try:
+        return mesi[int(mese_num)]
+    except Exception:
+        return "Sconosciuto"
 
 # ==========================================
 # ⚙️ CONFIGURAZIONE STRUTTURA E TARIFFE
 # ==========================================
 CAPIENZA_FILE = {
-    "Prima Fila": 21,    # Aggiornato (+4)
-    "Seconda Fila": 21,  # Aggiornato (+4)
+    "Prima Fila": 21,
+    "Seconda Fila": 21,
     "Terza Fila": 12,
     "Quarta Fila": 10,
     "Quinta Fila": 7,
@@ -143,7 +149,6 @@ STATI_MAP = {
     "Liberato Solo Mattina (Rivendibile)": "Libero_Mat", "Liberato Solo Pomeriggio (Rivendibile)": "Libero_Pom", "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
-# Rimosso lo "Sconto" per avere la tabella pulita
 CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Confermato", "Attesa", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
@@ -172,14 +177,12 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     prezzo_base = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][0]
     suppl_persona = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][1]
     
-    # MATEMATICA ADDITIVA: Sottrazioni per le durate
     if durata == "Mezza Giornata (fino 13 / da 15.30)": prezzo_base -= 10.0
     elif durata == "Solo 1 Persona (Postazione Ridotta)": prezzo_base -= 5.0
         
     totale = prezzo_base
     if persone > 3: totale += suppl_persona
         
-    # Somma semplice per extra
     for ex in extra_scelti:
         if ex in PREZZI_EXTRA: totale += PREZZI_EXTRA[ex][tipo_tariffa]
     return float(totale)
@@ -198,7 +201,6 @@ def carica_prenotazioni():
             for col in colonne_base:
                 if col not in df.columns: df[col] = ""
                     
-            # UNIONE DEI CONTI GARANTITA: Tutti i nomi vengono formattati uguali
             df['Nome'] = df['Nome'].apply(pulisci_nome)
             
             df['Ombrellone'] = pd.to_numeric(df['Ombrellone'], errors='coerce').fillna(1).astype(int)
@@ -251,7 +253,6 @@ if not df_pren.empty:
                 lista_ex = [x.strip() for x in str(df_pren.loc[idx, 'Extra']).split(',')] if pd.notna(df_pren.loc[idx, 'Extra']) else []
                 pz_calc = calcola_prezzo_automatico(d_pd.date(), str(df_pren.loc[idx, 'Fila']), int(df_pren.loc[idx, 'Persone']), str(df_pren.loc[idx, 'Durata']), lista_ex)
                 
-                # FORZATURA OSPITI = 0
                 if str(df_pren.loc[idx, 'Incassato_da']) == "Ospite (Gratis)": pz_calc = 0.0
                 
                 if float(df_pren.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
@@ -282,22 +283,28 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
         df_cliente = df_pren[mask_da_saldare].copy()
         if not df_cliente.empty:
             df_cliente['Mese_Num'] = pd.to_datetime(df_cliente['Data'], errors='coerce').dt.month
-            df_cliente['Mese_Nome'] = df_cliente['Mese_Num'].apply(lambda x: MESI_ITA[int(x)] if pd.notna(x) else "Sconosciuto")
-            mesi_disponibili = df_cliente['Mese_Nome'].dropna().unique().tolist()
+            
+            # QUI C'ERA L'ERRORE ROSSO: Ora è corazzato.
+            df_cliente['Mese_Nome'] = df_cliente['Mese_Num'].apply(ottieni_mese_sicuro)
+            
+            mesi_disponibili = [m for m in df_cliente['Mese_Nome'].unique() if m != "Sconosciuto"]
+            if not mesi_disponibili: mesi_disponibili = ["Tutti i mesi"]
             
             st.markdown("### 📅 Scegli i mesi da saldare")
             mesi_selezionati = st.multiselect("Mesi inclusi nel pagamento:", mesi_disponibili, default=mesi_disponibili)
-            if mesi_selezionati:
-                df_cliente_filtrato = df_cliente[df_cliente['Mese_Nome'].isin(mesi_selezionati)]
+            
+            # Se la lista non è vuota, procedo con i conti
+            if mesi_selezionati or mesi_disponibili == ["Tutti i mesi"]:
+                df_cliente_filtrato = df_cliente[df_cliente['Mese_Nome'].isin(mesi_selezionati)] if mesi_selezionati else df_cliente
                 totale_dovuto = df_cliente_filtrato['Prezzo_Giorno'].sum()
-                st.warning(f"💶 **Totale da saldare per {cliente_sel} ({', '.join(mesi_selezionati)}): € {totale_dovuto:.2f}**")
+                st.warning(f"💶 **Totale da saldare per {cliente_sel}: € {totale_dovuto:.2f}**")
                 
                 col_sc, col_inc = st.columns(2)
                 with col_sc:
                     prezzo_finale = st.number_input("Cifra arrotondata che il cliente paga:", min_value=0.0, value=float(totale_dovuto), step=1.0)
                     sconto_cumulativo = totale_dovuto - prezzo_finale
                     percentuale_sconto = (sconto_cumulativo / totale_dovuto * 100) if totale_dovuto > 0 else 0.0
-                    if sconto_cumulativo > 0: st.info(f"💡 Sconto: **€ {sconto_cumulativo:.2f}** ({percentuale_sconto:.1f}%)")
+                    if sconto_cumulativo > 0: st.info(f"💡 Sconto applicato: **€ {sconto_cumulativo:.2f}** ({percentuale_sconto:.1f}%)")
                 with col_inc:
                     incassato_da_cum = st.selectbox("💰 I soldi sono incassati da:", OPERATORI_SPIAGGIA, key="inc_cum")
                 
@@ -310,7 +317,7 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                         df_pren.loc[idx, 'Incassato_da'] = incassato_da_cum
                         if df_pren.loc[idx, 'Stato'] in ["Attesa", "Confermato", "Presente", "Pagato"]: df_pren.loc[idx, 'Stato'] = "Pres_Pagato"
                     df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                    backup_istantaneo_telegram(f"Registrato Saldo per {cliente_sel}")
+                    backup_istantaneo_telegram(f"Registrato Saldo Definitivo per {cliente_sel}")
                     st.success("Saldo registrato correttamente e inviato backup!")
                     st.rerun()
 
@@ -358,8 +365,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                             old_extra = "" if pd.isna(row_old['Extra']) else str(row_old['Extra']).strip()
                             new_extra = "" if pd.isna(row_new['Extra']) else str(row_new['Extra']).strip()
                             
-                            # Normalizza il nome anche dopo la modifica
-                            edited_search.loc[idx, 'Nome'] = pulisci_nome(new_row['Nome'])
+                            edited_search.loc[idx, 'Nome'] = pulisci_nome(row_new['Nome'])
                             
                             if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
                                 pz = calcola_prezzo_automatico(row_new['Data'].date(), new_fila, new_persone, new_durata, [new_extra] if new_extra else [])
@@ -368,6 +374,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 
                         inc = str(edited_search.loc[idx, 'Incassato_da'])
                         sto = str(edited_search.loc[idx, 'Stato'])
+                        
                         if inc == "Ospite (Gratis)": edited_search.loc[idx, 'Prezzo_Giorno'] = 0.0
                         if inc not in ["", "nan", "Da saldare"]:
                             if sto == "Presente": edited_search.loc[idx, 'Stato'] = "Pres_Pagato"
@@ -377,7 +384,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     df_pren_new = df_pren.drop(index=risultati_filtrati.index)
                     df_pren_new = pd.concat([df_pren_new, edited_search], ignore_index=True)
                     df_pren_new.to_csv(FILE_PRENOTAZIONI, index=False)
-                    backup_istantaneo_telegram("Modifiche salvate da tabella Ricerca Clienti")
+                    backup_istantaneo_telegram("Modifiche salvate da Ricerca Clienti")
                     st.success("✅ Modifiche salvate e backup inviato!")
                     st.rerun()
             else:
@@ -407,9 +414,9 @@ if isinstance(date_selezionate, tuple) and len(date_selezionate) > 0:
         
     ombrelloni_liberi = [i for i in range(1, max_ombrelloni_riga + 1) if i not in ombrelloni_occupati]
     if ombrelloni_liberi:
-        st.sidebar.success(f"✅ Liberi intera giornata:\n **{', '.join(map(str, ombrelloni_liberi))}**")
+        st.sidebar.success(f"✅ Liberi intera giornata in questa fila:\n **{', '.join(map(str, ombrelloni_liberi))}**")
     else:
-        st.sidebar.error("❌ Tutto esaurito in questa fila!")
+        st.sidebar.error("❌ Tutto esaurito in questa fila per le date selezionate!")
 
 col_q, col_omb = st.sidebar.columns(2)
 with col_q: quantita_postazioni = st.sidebar.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
@@ -462,7 +469,6 @@ if submit:
             g_str = (data_inizio + timedelta(days=i)).strftime("%Y-%m-%d")
             pz_un = calcola_prezzo_automatico(data_inizio + timedelta(days=i), input_fila, input_persone, input_durata, input_extra)
             
-            # Blocco Ospiti = €0.0
             if input_incassato == "Ospite (Gratis)": pz_un = 0.0
             
             for j in range(quantita_postazioni):
@@ -633,7 +639,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                                 n_p = pd.DataFrame([{"Data": date_range_vis[0], "Fila": nome_fila, "Ombrellone": int(numero_omb), "Nome": pulisci_nome(nome_sub), "Stato": "Presente", "Prezzo_Giorno": pz_full, "Durata": "Mezza Giornata (fino 13 / da 15.30)", "Operatore": operatore_attivo, "Incassato_da": "Da saldare"}])
                                 df_pren = pd.concat([df_pren, n_p], ignore_index=True)
                                 df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                                backup_istantaneo_telegram(f"Aggiunto Subentro dalla mappa: {nome_sub}")
+                                backup_istantaneo_telegram(f"Registrato subentro in mappa per {nome_sub}")
                                 st.rerun()
                 else:
                     box_html = f"""
@@ -664,7 +670,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                                     nuova_p = pd.DataFrame([{"Data": date_range_vis[0], "Fila": nome_fila, "Ombrellone": int(numero_omb), "Nome": nome_pulito, "Telefono": tel_val, "Stato": "Confermato" if is_future else "Presente", "Prezzo_Giorno": pz, "Sconto": 0.0, "Hotel": "", "Persone": 2, "Durata": "Giornata Intera", "Extra": "", "Note": "", "Operatore": operatore_attivo, "Incassato_da": "Da saldare"}])
                                     df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
                                     df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-                                    backup_istantaneo_telegram(f"Aggiunta prenotazione da Mappa: {nome_pulito}")
+                                    backup_istantaneo_telegram(f"Registrata nuova postazione mappa: {nome_pulito}")
                                     st.rerun()
                     else:
                         if colonne_griglia[i].button("⬅️ Invia", key=f"snd_{nome_fila}_{numero_omb}", use_container_width=True):
@@ -689,7 +695,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
@@ -726,7 +732,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     new_extra = "" if pd.isna(row_new['Extra']) else str(row_new['Extra']).strip()
                     old_extra = "" if pd.isna(old_ex_val) else str(old_ex_val).strip()
                     
-                    edited_range.loc[idx, 'Nome'] = pulisci_nome(new_row['Nome'])
+                    edited_range.loc[idx, 'Nome'] = pulisci_nome(row_new['Nome'])
                     
                     if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
                         nuovo_pz = calcola_prezzo_automatico(row_new['Data'].date(), new_fila, new_persone, new_durata, [new_extra] if new_extra else [])
@@ -747,5 +753,5 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
             df_pren_new = pd.concat([df_pren_new, edited_range], ignore_index=True)
             df_pren_new.to_csv(FILE_PRENOTAZIONI, index=False)
             backup_istantaneo_telegram("Modifiche salvate da tabella Elenco Dettagliato")
-            st.success("✅ Modifiche salvate e backup inviato su Telegram!")
+            st.success("✅ Modifiche ed eliminazioni salvate con successo nel database e inviate al Backup!")
             st.rerun()
