@@ -99,15 +99,12 @@ def pulisci_nome(nome_grezzo):
     return " ".join(str(nome_grezzo).split()).title()
 
 def ottieni_mese_sicuro(mese_num):
-    # Questa funzione corazzata previene il crash che hai appena avuto!
     mesi = {1: "Gennaio", 2: "Febbraio", 3: "Marzo", 4: "Aprile", 5: "Maggio", 6: "Giugno", 7: "Luglio", 8: "Agosto", 9: "Settembre", 10: "Ottobre", 11: "Novembre", 12: "Dicembre"}
-    try:
-        return mesi[int(mese_num)]
-    except Exception:
-        return "Sconosciuto"
+    try: return mesi[int(mese_num)]
+    except Exception: return "Sconosciuto"
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE STRUTTURA E TARIFFE
+# ⚙️ CONFIGURAZIONE STRUTTURA E TARIFFE 2026
 # ==========================================
 CAPIENZA_FILE = {
     "Prima Fila": 21,
@@ -127,10 +124,11 @@ STAGIONI_DATE = {
 
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
+# AGGIORNATE TARIFFE ALTISSIMA STAGIONE SECONDO LISTINO!
 TARIFFE = {
     "Alta B": {"Prima Fila": {"Feriale": [42, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Terza Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Quarta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Quinta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [37, 6]}},
     "Alta C": {"Prima Fila": {"Feriale": [44, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Terza Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Quarta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Quinta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Sesta Fila (Altre)": {"Feriale": [35, 5], "Festivo": [38, 6]}},
-    "Altissima": {"Prima Fila": {"Feriale": [56, 10], "Festivo": [58, 12]}, "Seconda Fila": {"Feriale": [53, 8], "Festivo": [55, 10]}, "Terza Fila": {"Feriale": [53, 8], "Festivo": [55, 10]}, "Quarta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]}, "Quinta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]}, "Sesta Fila (Altre)": {"Feriale": [43, 6], "Festivo": [45, 7]}}
+    "Altissima": {"Prima Fila": {"Feriale": [56, 10], "Festivo": [60, 12]}, "Seconda Fila": {"Feriale": [53, 10], "Festivo": [56, 10]}, "Terza Fila": {"Feriale": [53, 10], "Festivo": [56, 10]}, "Quarta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]}, "Quinta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]}, "Sesta Fila (Altre)": {"Feriale": [43, 6], "Festivo": [46, 7]}}
 }
 
 PREZZI_EXTRA = {
@@ -177,9 +175,17 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     prezzo_base = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][0]
     suppl_persona = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][1]
     
-    if durata == "Mezza Giornata (fino 13 / da 15.30)": prezzo_base -= 10.0
-    elif durata == "Solo 1 Persona (Postazione Ridotta)": prezzo_base -= 5.0
-        
+    if durata == "Mezza Giornata (fino 13 / da 15.30)":
+        if stagione == "Altissima" and fila == "Sesta Fila (Altre)":
+            prezzo_base = 22.0 if persone == 1 else 30.0
+        else:
+            prezzo_base -= 10.0
+    elif durata == "Solo 1 Persona (Postazione Ridotta)":
+        if stagione == "Altissima" and fila == "Sesta Fila (Altre)":
+            prezzo_base = 32.0 if tipo_tariffa == "Festivo" else 30.0
+        else:
+            prezzo_base -= 5.0
+            
     totale = prezzo_base
     if persone > 3: totale += suppl_persona
         
@@ -199,10 +205,10 @@ def carica_prenotazioni():
         try:
             df = pd.read_csv(FILE_PRENOTAZIONI, dtype={'Telefono': str})
             for col in colonne_base:
-                if col not in df.columns: df[col] = ""
+                if col not in df.columns:
+                    df[col] = ""
                     
             df['Nome'] = df['Nome'].apply(pulisci_nome)
-            
             df['Ombrellone'] = pd.to_numeric(df['Ombrellone'], errors='coerce').fillna(1).astype(int)
             df['Persone'] = pd.to_numeric(df['Persone'], errors='coerce').fillna(2).astype(int)
             df['Prezzo_Giorno'] = pd.to_numeric(df['Prezzo_Giorno'], errors='coerce').fillna(0.0)
@@ -239,33 +245,10 @@ def applica_azione_rapida(idx, widget_key):
         st.session_state[widget_key] = "⚡ Azione"
 
 
-# =========================================================
-# AUTO-AGGIORNAMENTO SILENZIOSO PREZZI AL CARICAMENTO
-# =========================================================
-df_pren = carica_prenotazioni()
-if not df_pren.empty:
-    aggiornato_in_silenzio = False
-    oggi_dt = date.today()
-    for idx in df_pren.index:
-        try:
-            d_pd = pd.to_datetime(df_pren.loc[idx, 'Data'], errors='coerce')
-            if pd.notna(d_pd) and d_pd.date() >= oggi_dt:
-                lista_ex = [x.strip() for x in str(df_pren.loc[idx, 'Extra']).split(',')] if pd.notna(df_pren.loc[idx, 'Extra']) else []
-                pz_calc = calcola_prezzo_automatico(d_pd.date(), str(df_pren.loc[idx, 'Fila']), int(df_pren.loc[idx, 'Persone']), str(df_pren.loc[idx, 'Durata']), lista_ex)
-                
-                if str(df_pren.loc[idx, 'Incassato_da']) == "Ospite (Gratis)": pz_calc = 0.0
-                
-                if float(df_pren.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
-                    df_pren.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
-                    aggiornato_in_silenzio = True
-        except: pass
-    if aggiornato_in_silenzio:
-        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-        backup_istantaneo_telegram("Auto-aggiornamento listino tariffe")
-
-
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
+
+df_pren = carica_prenotazioni()
 
 operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
@@ -283,8 +266,6 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
         df_cliente = df_pren[mask_da_saldare].copy()
         if not df_cliente.empty:
             df_cliente['Mese_Num'] = pd.to_datetime(df_cliente['Data'], errors='coerce').dt.month
-            
-            # QUI C'ERA L'ERRORE ROSSO: Ora è corazzato.
             df_cliente['Mese_Nome'] = df_cliente['Mese_Num'].apply(ottieni_mese_sicuro)
             
             mesi_disponibili = [m for m in df_cliente['Mese_Nome'].unique() if m != "Sconosciuto"]
@@ -293,7 +274,6 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
             st.markdown("### 📅 Scegli i mesi da saldare")
             mesi_selezionati = st.multiselect("Mesi inclusi nel pagamento:", mesi_disponibili, default=mesi_disponibili)
             
-            # Se la lista non è vuota, procedo con i conti
             if mesi_selezionati or mesi_disponibili == ["Tutti i mesi"]:
                 df_cliente_filtrato = df_cliente[df_cliente['Mese_Nome'].isin(mesi_selezionati)] if mesi_selezionati else df_cliente
                 totale_dovuto = df_cliente_filtrato['Prezzo_Giorno'].sum()
@@ -321,16 +301,14 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente e inviato backup!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA (MODIFICABILE E BLINDATO) ---
+# --- 🔍 MOTORE DI RICERCA VELOCE E LIBERO ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
         if not df_pren.empty:
             parole = ricerca.split()
             mask_nome = pd.Series(True, index=df_pren.index)
-            for parola in parole:
-                mask_nome &= df_pren['Nome'].astype(str).str.contains(parola, case=False, na=False)
-            
+            for parola in parole: mask_nome &= df_pren['Nome'].astype(str).str.contains(parola, case=False, na=False)
             mask_tel = df_pren['Telefono'].astype(str).str.contains(ricerca, case=False, na=False)
             mask_hotel = df_pren['Hotel'].astype(str).str.contains(ricerca, case=False, na=False)
             
@@ -339,17 +317,14 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} prenotazioni.")
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
-                
                 risultati_filtrati = risultati[colonne_ordine].copy()
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
                 risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
-                with st.form("form_ricerca"):
-                    st.info("💡 Fai le tue modifiche direttamente nelle celle (o cancella con il cestino) e poi clicca SALVA MODIFICHE.")
-                    edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE)
-                    btn_save_ricerca = st.form_submit_button("💾 Salva Modifiche", type="primary")
+                st.info("💡 Fai le modifiche, premi **INVIO** (o tocca fuori dalla cella) e poi clicca SALVA qui sotto.")
+                edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
-                if btn_save_ricerca:
+                if st.button("💾 Salva Modifiche", type="primary", key="btn_ricerca"):
                     edited_search['Data'] = pd.to_datetime(edited_search['Data'], errors='coerce')
                     edited_search = edited_search.dropna(subset=['Data'])
                     
@@ -374,7 +349,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 
                         inc = str(edited_search.loc[idx, 'Incassato_da'])
                         sto = str(edited_search.loc[idx, 'Stato'])
-                        
                         if inc == "Ospite (Gratis)": edited_search.loc[idx, 'Prezzo_Giorno'] = 0.0
                         if inc not in ["", "nan", "Da saldare"]:
                             if sto == "Presente": edited_search.loc[idx, 'Stato'] = "Pres_Pagato"
@@ -391,7 +365,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
         else:
             st.info("Nessuna prenotazione presente nel sistema al momento.")
-
 
 # --- BARRA LATERALE E FORM PRENOTAZIONI ---
 st.sidebar.header("📝 Nuova Prenotazione")
@@ -530,7 +503,7 @@ if nome_wa and len(date_wa) > 0:
             testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us promptly by sending a WhatsApp message to +39 3391789319, indicating your reference name and reservation dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you and see you soon!\n\n{operatore_attivo}"
             oggetto = "Reservation Confirmation - Araj Beach Club"
         elif lingua_scelta == "Français":
-            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du sistema et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
+            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du sistema e l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
             oggetto = "Confirmation de Réservation - Araj Beach Club"
         elif lingua_scelta == "Español":
             testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, le rogamos que avise a tiempo enviando un mensaje de WhatsApp al número +39 3391789319, indicando el nombre de referencia y las fechas de la reserva.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias y hasta pronto!\n\n{operatore_attivo}"
@@ -695,7 +668,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA E LIBERA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
@@ -710,12 +683,10 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
         df_range_edit['Ord_Fila'] = df_range_edit['Fila'].map(ordine_file)
         df_range_edit = df_range_edit.sort_values(by=['Data', 'Ord_Fila', 'Ombrellone']).drop(columns=['Ord_Fila'])
         
-        with st.form("form_tabella_oggi"):
-            st.info("💡 Fai le tue modifiche direttamente nelle celle (o cancella con il cestino) e poi clicca il pulsante qui sotto.")
-            edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE)
-            btn_salva_oggi = st.form_submit_button("💾 Salva Modifiche e Ricalcola Prezzi", type="primary")
-            
-        if btn_salva_oggi:
+        st.info("💡 Fai le tue modifiche, **premi INVIO sulla tastiera** per confermare la cella, e poi clicca il pulsante qui sotto.")
+        edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_dettagli")
+        
+        if st.button("💾 Salva Modifiche e Ricalcola Prezzi", type="primary", key="btn_salva_dettagli"):
             edited_range['Data'] = pd.to_datetime(edited_range['Data'], errors='coerce')
             edited_range = edited_range.dropna(subset=['Data'])
             
@@ -742,7 +713,6 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                 inc = str(edited_range.loc[idx, 'Incassato_da'])
                 sto = str(edited_range.loc[idx, 'Stato'])
                 
-                # Blocco Ospiti = €0.0
                 if inc == "Ospite (Gratis)": edited_range.loc[idx, 'Prezzo_Giorno'] = 0.0
                 if inc not in ["", "nan", "Da saldare"]:
                     if sto == "Presente": edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
