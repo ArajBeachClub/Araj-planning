@@ -28,7 +28,6 @@ if 'wa_tipo' not in st.session_state: st.session_state['wa_tipo'] = "Privato"
 if 'wa_nome' not in st.session_state: st.session_state['wa_nome'] = ""
 if 'wa_tel' not in st.session_state: st.session_state['wa_tel'] = ""
 if 'wa_email' not in st.session_state: st.session_state['wa_email'] = ""
-if 'map_error' not in st.session_state: st.session_state['map_error'] = ""
 
 # ==========================================
 # 👤 TEAM E OPERATORI
@@ -86,14 +85,8 @@ def backup_istantaneo_telegram(azione_eseguita):
             pass
 
 # ==========================================
-# FUNZIONI DI SUPPORTO (PULIZIA E SICUREZZA)
+# FUNZIONI DI SUPPORTO E PULIZIA
 # ==========================================
-def normalizza_tel(t):
-    if not t or pd.isna(t): return ""
-    t = str(t).strip().replace(" ", "").replace("+", "")
-    if t.startswith("39") and len(t) > 9: t = t[2:]
-    return t
-
 def pulisci_nome(nome_grezzo):
     if pd.isna(nome_grezzo) or str(nome_grezzo).strip().lower() in ["none", "nan", ""]: return ""
     return " ".join(str(nome_grezzo).split()).title()
@@ -104,7 +97,7 @@ def ottieni_mese_sicuro(mese_num):
     except Exception: return "Sconosciuto"
 
 # ==========================================
-# ⚙️ CONFIGURAZIONE STRUTTURA E TARIFFE 2026
+# ⚙️ CONFIGURAZIONE TARIFFE E LISTINO AGOSTO
 # ==========================================
 CAPIENZA_FILE = {
     "Prima Fila": 21,
@@ -124,11 +117,25 @@ STAGIONI_DATE = {
 
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
-# AGGIORNATE TARIFFE ALTISSIMA STAGIONE SECONDO LISTINO!
 TARIFFE = {
     "Alta B": {"Prima Fila": {"Feriale": [42, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Terza Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Quarta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Quinta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [37, 6]}},
     "Alta C": {"Prima Fila": {"Feriale": [44, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Terza Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Quarta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Quinta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Sesta Fila (Altre)": {"Feriale": [35, 5], "Festivo": [38, 6]}},
-    "Altissima": {"Prima Fila": {"Feriale": [56, 10], "Festivo": [60, 12]}, "Seconda Fila": {"Feriale": [53, 10], "Festivo": [56, 10]}, "Terza Fila": {"Feriale": [53, 10], "Festivo": [56, 10]}, "Quarta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]}, "Quinta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]}, "Sesta Fila (Altre)": {"Feriale": [43, 6], "Festivo": [46, 7]}}
+    "Altissima": { # Applicato per 18-31 Luglio e 24-31 Agosto
+        "Prima Fila": {"Feriale": [56, 12], "Festivo": [58, 12]},
+        "Seconda Fila": {"Feriale": [53, 10], "Festivo": [55, 10]},
+        "Terza Fila": {"Feriale": [53, 10], "Festivo": [55, 10]},
+        "Quarta Fila": {"Feriale": [49, 8], "Festivo": [52, 8]},
+        "Quinta Fila": {"Feriale": [49, 8], "Festivo": [52, 8]},
+        "Sesta Fila (Altre)": {"Feriale": [42, 6], "Festivo": [44, 7]}
+    },
+    "Peak Season": { # Applicato per 1-23 Agosto (Feriale e Festivo identici)
+        "Prima Fila": {"Feriale": [80, 14], "Festivo": [80, 14]},
+        "Seconda Fila": {"Feriale": [68, 10], "Festivo": [68, 10]},
+        "Terza Fila": {"Feriale": [68, 10], "Festivo": [68, 10]},
+        "Quarta Fila": {"Feriale": [62, 9], "Festivo": [62, 9]},
+        "Quinta Fila": {"Feriale": [62, 9], "Festivo": [62, 9]},
+        "Sesta Fila (Altre)": {"Feriale": [49, 8], "Festivo": [49, 8]}
+    }
 }
 
 PREZZI_EXTRA = {
@@ -176,15 +183,9 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     suppl_persona = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][1]
     
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
-        if stagione == "Altissima" and fila == "Sesta Fila (Altre)":
-            prezzo_base = 22.0 if persone == 1 else 30.0
-        else:
-            prezzo_base -= 10.0
+        prezzo_base -= 10.0
     elif durata == "Solo 1 Persona (Postazione Ridotta)":
-        if stagione == "Altissima" and fila == "Sesta Fila (Altre)":
-            prezzo_base = 32.0 if tipo_tariffa == "Festivo" else 30.0
-        else:
-            prezzo_base -= 5.0
+        prezzo_base -= 5.0
             
     totale = prezzo_base
     if persone > 3: totale += suppl_persona
@@ -301,14 +302,16 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente e inviato backup!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA VELOCE E LIBERO ---
+# --- 🔍 MOTORE DI RICERCA (SALVATAGGIO IMMEDIATO E VELOCE) ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
         if not df_pren.empty:
             parole = ricerca.split()
             mask_nome = pd.Series(True, index=df_pren.index)
-            for parola in parole: mask_nome &= df_pren['Nome'].astype(str).str.contains(parola, case=False, na=False)
+            for parola in parole:
+                mask_nome &= df_pren['Nome'].astype(str).str.contains(parola, case=False, na=False)
+            
             mask_tel = df_pren['Telefono'].astype(str).str.contains(ricerca, case=False, na=False)
             mask_hotel = df_pren['Hotel'].astype(str).str.contains(ricerca, case=False, na=False)
             
@@ -317,14 +320,16 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} prenotazioni.")
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
+                
                 risultati_filtrati = risultati[colonne_ordine].copy()
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
                 risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
-                st.info("💡 Fai le modifiche, premi **INVIO** (o tocca fuori dalla cella) e poi clicca SALVA qui sotto.")
+                st.info("💡 Fai le tue modifiche direttamente nelle celle, poi premi **INVIO** sulla tastiera. Salva tutto in automatico all'istante.")
+                
                 edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
-                if st.button("💾 Salva Modifiche", type="primary", key="btn_ricerca"):
+                if not risultati_filtrati.equals(edited_search):
                     edited_search['Data'] = pd.to_datetime(edited_search['Data'], errors='coerce')
                     edited_search = edited_search.dropna(subset=['Data'])
                     
@@ -349,6 +354,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 
                         inc = str(edited_search.loc[idx, 'Incassato_da'])
                         sto = str(edited_search.loc[idx, 'Stato'])
+                        
                         if inc == "Ospite (Gratis)": edited_search.loc[idx, 'Prezzo_Giorno'] = 0.0
                         if inc not in ["", "nan", "Da saldare"]:
                             if sto == "Presente": edited_search.loc[idx, 'Stato'] = "Pres_Pagato"
@@ -358,8 +364,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     df_pren_new = df_pren.drop(index=risultati_filtrati.index)
                     df_pren_new = pd.concat([df_pren_new, edited_search], ignore_index=True)
                     df_pren_new.to_csv(FILE_PRENOTAZIONI, index=False)
-                    backup_istantaneo_telegram("Modifiche salvate da Ricerca Clienti")
-                    st.success("✅ Modifiche salvate e backup inviato!")
+                    backup_istantaneo_telegram("Modifiche rapide salvate (Ricerca Clienti)")
                     st.rerun()
             else:
                 st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
@@ -373,7 +378,7 @@ date_selezionate = st.sidebar.date_input("Date", value=(date.today(), date.today
 input_fila = st.sidebar.selectbox("Fila", list(CAPIENZA_FILE.keys()), key="sb_fila")
 max_ombrelloni_riga = CAPIENZA_FILE[input_fila]
 
-if isinstance(date_selezionate, tuple) and len(date_selezionate) > 0:
+if isinstance(date_selezionate, (tuple, list)) and len(date_selezionate) > 0:
     data_inizio = date_selezionate[0]
     data_fine = date_selezionate[1] if len(date_selezionate) > 1 else data_inizio
     giorni_totali = (data_fine - data_inizio).days + 1
@@ -395,7 +400,7 @@ col_q, col_omb = st.sidebar.columns(2)
 with col_q: quantita_postazioni = st.sidebar.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
 with col_omb: input_ombrellone = st.sidebar.selectbox(f"N° Ombrellone Iniziale", list(range(1, max_ombrelloni_riga - quantita_postazioni + 2)), key="sb_omb")
 
-# SUGGERIMENTI CLIENTI GIA' ESISTENTI (PER UNIONE CONTI)
+# SUGGERIMENTI CLIENTI GIA' ESISTENTI (CORAZZATO CONTRO GLI ERRORI)
 st.sidebar.markdown("---")
 st.sidebar.subheader("👤 Dati Cliente")
 lista_clienti = sorted(df_pren[df_pren['Nome'] != ""]['Nome'].unique().tolist())
@@ -403,9 +408,10 @@ cliente_suggerito = st.sidebar.selectbox("🔍 Cerca e seleziona cliente già re
 
 telefono_suggerito = ""
 if cliente_suggerito:
-    telefono_suggerito = df_pren[df_pren['Nome'] == cliente_suggerito]['Telefono'].dropna().iloc[-1]
-    if pd.isna(telefono_suggerito): telefono_suggerito = ""
-
+    filtro_tel = df_pren[df_pren['Nome'] == cliente_suggerito]['Telefono'].dropna()
+    if not filtro_tel.empty:
+        telefono_suggerito = filtro_tel.iloc[-1]
+        
 rk = st.session_state['reset_form']
 input_fisso = st.sidebar.text_input("⛱️ CLIENTI FISSI", key=f"form_fisso_{rk}").strip()
 input_nome = st.sidebar.text_input("👤 Nome e Cognome", value=cliente_suggerito, key=f"form_nome_{rk}").strip()
@@ -427,7 +433,7 @@ if submit:
     nome_pulito = pulisci_nome(input_nome)
     cifre_tel = "".join([c for c in input_telefono if c.isdigit() or c == "+"])
     
-    if not isinstance(date_selezionate, tuple) or len(date_selezionate) == 0: 
+    if not isinstance(date_selezionate, (tuple, list)) or len(date_selezionate) == 0: 
         st.sidebar.error("⚠️ Seleziona le date.")
     else:
         data_inizio = date_selezionate[0]
@@ -454,10 +460,32 @@ if submit:
                 }])
                 df_pren = pd.concat([df_pren, nuova_p], ignore_index=True)
         df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-        backup_istantaneo_telegram(f"Nuova Prenotazione: {nome_pulito if nome_pulito else input_hotel}")
+        backup_istantaneo_telegram(f"Nuova Prenotazione inserita: {nome_pulito if nome_pulito else input_hotel}")
         st.session_state.wa_tipo, st.session_state.wa_nome, st.session_state.wa_tel, st.session_state.wa_dates, st.session_state.wa_fila = ("Hotel" if is_hotel_booking else "Privato"), (input_hotel if is_hotel_booking else nome_pulito), cifre_tel, date_selezionate, input_fila
         st.session_state['reset_form'] += 1
         st.rerun()
+
+# --- BACKUP LOCALE ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("💾 Backup Locale")
+
+if not df_pren.empty:
+    df_backup = df_pren.copy()
+    df_backup['Data'] = pd.to_datetime(df_backup['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
+    csv_backup = df_backup.to_csv(index=False, sep=';').encode('utf-8')
+    st.sidebar.download_button(label="⬇️ Scarica su Telefono/PC", data=csv_backup, file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv", mime="text/csv", type="primary")
+
+file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup", type=["csv"])
+if file_caricato is not None:
+    if st.sidebar.button("⚠️ Conferma Ripristino"):
+        try:
+            df_ripristino = pd.read_csv(file_caricato, sep=None, engine='python')
+            df_ripristino['Data'] = pd.to_datetime(df_ripristino['Data'], format='%d-%m-%Y', errors='coerce').fillna(pd.to_datetime(df_ripristino['Data'], errors='coerce')).dt.strftime('%Y-%m-%d')
+            df_ripristino.to_csv(FILE_PRENOTAZIONI, index=False)
+            st.sidebar.success("✅ Ripristino completato! Ricarica la pagina.")
+            st.rerun()
+        except Exception:
+            st.sidebar.error("❌ Formato file non valido.")
 
 # --- CONFERME WHATSAPP / EMAIL ---
 st.sidebar.markdown("---")
@@ -475,61 +503,69 @@ fila_esp = fila_ita.replace("Prima", "Primera").replace("Seconda", "Segunda").re
 fila_eng = fila_ita.replace("Prima", "First").replace("Seconda", "Second").replace("Terza", "Third").replace("Quarta", "Fourth").replace("Quinta", "Fifth").replace("Sesta", "Sixth").replace(" Fila", " Row")
 fila_fra = fila_ita.replace("Prima Fila", "Première ligne").replace("Seconda Fila", "Deuxième ligne").replace("Terza Fila", "Troisième ligne").replace("Quarta Fila", "Quatrième ligne").replace("Quinta Fila", "Cinquième ligne").replace("Sesta Fila", "Sixième ligne")
 
-if nome_wa and len(date_wa) > 0:
-    d1 = date_wa[0].strftime("%d/%m/%Y")
-    
-    if len(date_wa) > 1 and date_wa[0] != date_wa[1]:
-        d2 = date_wa[1].strftime("%d/%m/%Y")
-        stringa_date_ita = f"dal {d1} al {d2}"
-        stringa_date_eng = f"from {d1} to {d2}"
-        stringa_date_fra = f"du {d1} au {d2}"
-        stringa_date_esp = f"del {d1} al {d2}"
+if nome_wa and date_wa:
+    if isinstance(date_wa, (tuple, list)):
+        if len(date_wa) > 0:
+            d1 = date_wa[0].strftime("%d/%m/%Y")
+            d2 = date_wa[1].strftime("%d/%m/%Y") if len(date_wa) > 1 and date_wa[0] != date_wa[1] else None
+        else:
+            d1, d2 = None, None
     else:
-        stringa_date_ita = f"per il giorno {d1}"
-        stringa_date_eng = f"for {d1}"
-        stringa_date_fra = f"pour le {d1}"
-        stringa_date_esp = f"para el {d1}"
+        d1 = date_wa.strftime("%d/%m/%Y")
+        d2 = None
         
-    fila_formattata_ita = f" in {fila_ita.lower()}" if fila_ita else ""
-    fila_formattata_eng = f" in {fila_eng.lower()}" if fila_eng else ""
-    fila_formattata_fra = f" en {fila_fra.lower()}" if fila_fra else ""
-    fila_formattata_esp = f" en {fila_esp.lower()}" if fila_esp else ""
+    if d1:
+        if d2:
+            stringa_date_ita = f"dal {d1} al {d2}"
+            stringa_date_eng = f"from {d1} to {d2}"
+            stringa_date_fra = f"du {d1} au {d2}"
+            stringa_date_esp = f"del {d1} al {d2}"
+        else:
+            stringa_date_ita = f"per il giorno {d1}"
+            stringa_date_eng = f"for {d1}"
+            stringa_date_fra = f"pour le {d1}"
+            stringa_date_esp = f"para el {d1}"
+            
+        fila_formattata_ita = f" in {fila_ita.lower()}" if fila_ita else ""
+        fila_formattata_eng = f" in {fila_eng.lower()}" if fila_eng else ""
+        fila_formattata_fra = f" en {fila_fra.lower()}" if fila_fra else ""
+        fila_formattata_esp = f" en {fila_esp.lower()}" if fila_esp else ""
+        
+        if tipo_cliente == "Privato":
+            if lingua_scelta == "Italiano":
+                testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita}{fila_formattata_ita} è stata registrata correttamente all'Araj Beach Club.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisare tempestivamente inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date della prenotazione.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie e a presto!\n\n{operatore_attivo}"
+                oggetto = "Conferma Prenotazione - Araj Beach Club"
+            elif lingua_scelta == "English":
+                testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us promptly by sending a WhatsApp message to +39 3391789319, indicating your reference name and reservation dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you and see you soon!\n\n{operatore_attivo}"
+                oggetto = "Reservation Confirmation - Araj Beach Club"
+            elif lingua_scelta == "Français":
+                testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du sistema et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
+                oggetto = "Confirmation de Réservation - Araj Beach Club"
+            elif lingua_scelta == "Español":
+                testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, le rogamos que avise a tiempo enviando un mensaje de WhatsApp al número +39 3391789319, indicando el nombre de referencia y las fechas de la reserva.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias y hasta pronto!\n\n{operatore_attivo}"
+                oggetto = "Confirmación de Reserva - Araj Beach Club"
+        else:
+            if lingua_scelta == "Italiano":
+                testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo la prenotazione {stringa_date_ita}{fila_formattata_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi entro le ore 11:00 inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie per la preziosa collaborazione!\n\n{operatore_attivo}\nAraj Beach Club"
+                oggetto = "Conferma Prenotazione Ospiti - Araj Beach Club"
+            elif lingua_scelta == "English":
+                testo_base = f"Dear Staff at {nome_wa},\n\nWe confirm the reservation {stringa_date_eng}{fila_formattata_eng} for your guests.\n\nPlease notify us of any delays by 11:00 AM via WhatsApp at +39 3391789319, indicating the reference name and dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you for your cooperation!\n\n{operatore_attivo}\nAraj Beach Club"
+                oggetto = "Guest Reservation Confirmation - Araj Beach Club"
+            elif lingua_scelta == "Français":
+                testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00 via WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci pour votre précieuse collaboration !\n\n{operatore_attivo}\nAraj Beach Club"
+                oggetto = "Confirmation de Réservation Clients - Araj Beach Club"
+            elif lingua_scelta == "Español":
+                testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nombre de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_attivo}\nAraj Beach Club"
+                oggetto = "Confirmación de Reserva de Huéspedes - Araj Beach Club"
     
-    if tipo_cliente == "Privato":
-        if lingua_scelta == "Italiano":
-            testo_base = f"Gentile {nome_wa},\n\nLa sua prenotazione {stringa_date_ita}{fila_formattata_ita} è stata registrata correttamente all'Araj Beach Club.\n\nLe ricordiamo di arrivare entro le ore 11:00. In caso di ritardo, la preghiamo di avvisare tempestivamente inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date della prenotazione.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie e a presto!\n\n{operatore_attivo}"
-            oggetto = "Conferma Prenotazione - Araj Beach Club"
-        elif lingua_scelta == "English":
-            testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us promptly by sending a WhatsApp message to +39 3391789319, indicating your reference name and reservation dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you and see you soon!\n\n{operatore_attivo}"
-            oggetto = "Reservation Confirmation - Araj Beach Club"
-        elif lingua_scelta == "Français":
-            testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du sistema e l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
-            oggetto = "Confirmation de Réservation - Araj Beach Club"
-        elif lingua_scelta == "Español":
-            testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, le rogamos que avise a tiempo enviando un mensaje de WhatsApp al número +39 3391789319, indicando el nombre de referencia y las fechas de la reserva.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias y hasta pronto!\n\n{operatore_attivo}"
-            oggetto = "Confirmación de Reserva - Araj Beach Club"
-    else:
-        if lingua_scelta == "Italiano":
-            testo_base = f"Gentile Staff di {nome_wa},\n\nConfermiamo la prenotazione {stringa_date_ita}{fila_formattata_ita} per i vostri ospiti.\n\nVi preghiamo di comunicare eventuali ritardi entro le ore 11:00 inviando un messaggio WhatsApp al numero +39 3391789319, indicando il nome di riferimento e le date.\n\nIn caso contrario, la prenotazione decadrà dal sistema e la postazione verrà liberata.\n\nGrazie per la preziosa collaborazione!\n\n{operatore_attivo}\nAraj Beach Club"
-            oggetto = "Conferma Prenotazione Ospiti - Araj Beach Club"
-        elif lingua_scelta == "English":
-            testo_base = f"Dear Staff at {nome_wa},\n\nWe confirm the reservation {stringa_date_eng}{fila_formattata_eng} for your guests.\n\nPlease notify us of any delays by 11:00 AM via WhatsApp at +39 3391789319, indicating the reference name and dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you for your cooperation!\n\n{operatore_attivo}\nAraj Beach Club"
-            oggetto = "Guest Reservation Confirmation - Araj Beach Club"
-        elif lingua_scelta == "Français":
-            testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00 via WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci pour votre précieuse collaboration !\n\n{operatore_attivo}\nAraj Beach Club"
-            oggetto = "Confirmation de Réservation Clients - Araj Beach Club"
-        elif lingua_scelta == "Español":
-            testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nombre de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_attivo}\nAraj Beach Club"
-            oggetto = "Confirmación de Reserva de Huéspedes - Araj Beach Club"
-
-    testo_url = urllib.parse.quote(testo_base)
-    oggetto_url = urllib.parse.quote(oggetto)
-    
-    col1, col2 = st.sidebar.columns(2)
-    with col1:
-        if tel_wa: st.link_button("💬 WhatsApp", f"https://wa.me/{tel_wa.replace(' ','')}?text={testo_url}", use_container_width=True)
-    with col2:
-        st.link_button("📧 Email", f"mailto:{email_wa}?subject={oggetto_url}&body={testo_url}", use_container_width=True)
+        testo_url = urllib.parse.quote(testo_base)
+        oggetto_url = urllib.parse.quote(oggetto)
+        
+        col1, col2 = st.sidebar.columns(2)
+        with col1:
+            if tel_wa: st.link_button("💬 WhatsApp", f"https://wa.me/{tel_wa.replace(' ','')}?text={testo_url}", use_container_width=True)
+        with col2:
+            st.link_button("📧 Email", f"mailto:{email_wa}?subject={oggetto_url}&body={testo_url}", use_container_width=True)
 
 # --- MAPPA VISIVA GRID ---
 data_visiva = st.date_input("📅 Mappa Visiva:", value=(date.today(), date.today()), format="DD/MM/YYYY")
@@ -538,7 +574,8 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
     data_fine_vis = data_visiva[1] if len(data_visiva) > 1 else data_inizio_vis
     giorni_totali_vis = (data_fine_vis - data_inizio_vis).days + 1
     date_range_vis = [(data_inizio_vis + timedelta(days=i)).strftime("%Y-%m-%d") for i in range(giorni_totali_vis)]
-    df_range = df_pren[df_pren['Data'].isin(date_range_vis)] if not df_pren.empty else pd.DataFrame()
+    
+    df_range = df_pren[df_pren['Data'].isin(date_range_vis)]
 
     if giorni_totali_vis == 1:
         st.radio("⚙️ Azione quadratino verde:", ["⚡ Salva Subito (Clienti in Spiaggia)", "⬅️ Precompila a Sinistra (Nuove Prenotazioni)"], horizontal=True, key="map_mode")
@@ -668,7 +705,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA E LIBERA)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (SALVATAGGIO IMMEDIATO SENZA PULSANTI)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
@@ -683,10 +720,11 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
         df_range_edit['Ord_Fila'] = df_range_edit['Fila'].map(ordine_file)
         df_range_edit = df_range_edit.sort_values(by=['Data', 'Ord_Fila', 'Ombrellone']).drop(columns=['Ord_Fila'])
         
-        st.info("💡 Fai le tue modifiche, **premi INVIO sulla tastiera** per confermare la cella, e poi clicca il pulsante qui sotto.")
+        st.info("💡 Fai le tue modifiche, **premi INVIO sulla tastiera** (o tocca fuori dalla cella) e il sistema salverà all'istante, senza pulsanti!")
+        
         edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_dettagli")
         
-        if st.button("💾 Salva Modifiche e Ricalcola Prezzi", type="primary", key="btn_salva_dettagli"):
+        if not df_range_edit.equals(edited_range):
             edited_range['Data'] = pd.to_datetime(edited_range['Data'], errors='coerce')
             edited_range = edited_range.dropna(subset=['Data'])
             
@@ -722,6 +760,5 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
             df_pren_new = df_pren.drop(index=df_range_edit.index)
             df_pren_new = pd.concat([df_pren_new, edited_range], ignore_index=True)
             df_pren_new.to_csv(FILE_PRENOTAZIONI, index=False)
-            backup_istantaneo_telegram("Modifiche salvate da tabella Elenco Dettagliato")
-            st.success("✅ Modifiche ed eliminazioni salvate con successo nel database e inviate al Backup!")
+            backup_istantaneo_telegram("Modifiche dirette salvate da tabella Elenco Dettagliato")
             st.rerun()
