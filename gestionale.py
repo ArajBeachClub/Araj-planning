@@ -112,7 +112,8 @@ STAGIONI_DATE = {
     "Alta B": [(date(2026, 6, 27), date(2026, 7, 10))],
     "Alta C": [(date(2026, 7, 11), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
     "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 8, 24), date(2026, 8, 31))],
-    "Peak Season": [(date(2026, 8, 1), date(2026, 8, 23))]
+    "Peak Season A": [(date(2026, 8, 1), date(2026, 8, 7))],
+    "Peak Season B": [(date(2026, 8, 8), date(2026, 8, 23))]
 }
 
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
@@ -120,7 +121,7 @@ GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 TARIFFE = {
     "Alta B": {"Prima Fila": {"Feriale": [42, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Terza Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Quarta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Quinta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [37, 6]}},
     "Alta C": {"Prima Fila": {"Feriale": [44, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Terza Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Quarta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Quinta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Sesta Fila (Altre)": {"Feriale": [35, 5], "Festivo": [38, 6]}},
-    "Altissima": { # Applicato per 18-31 Luglio e 24-31 Agosto
+    "Altissima": {
         "Prima Fila": {"Feriale": [56, 12], "Festivo": [58, 12]},
         "Seconda Fila": {"Feriale": [53, 10], "Festivo": [55, 10]},
         "Terza Fila": {"Feriale": [53, 10], "Festivo": [55, 10]},
@@ -128,13 +129,21 @@ TARIFFE = {
         "Quinta Fila": {"Feriale": [49, 8], "Festivo": [52, 8]},
         "Sesta Fila (Altre)": {"Feriale": [42, 6], "Festivo": [44, 7]}
     },
-    "Peak Season": { # Applicato per 1-23 Agosto (Feriale e Festivo identici)
-        "Prima Fila": {"Feriale": [80, 14], "Festivo": [80, 14]},
+    "Peak Season A": { 
+        "Prima Fila": {"Feriale": [75, 14], "Festivo": [75, 14]},
+        "Seconda Fila": {"Feriale": [65, 10], "Festivo": [65, 10]},
+        "Terza Fila": {"Feriale": [65, 10], "Festivo": [65, 10]},
+        "Quarta Fila": {"Feriale": [59, 9], "Festivo": [59, 9]},
+        "Quinta Fila": {"Feriale": [59, 9], "Festivo": [59, 9]},
+        "Sesta Fila (Altre)": {"Feriale": [49, 8], "Festivo": [49, 8]}
+    },
+    "Peak Season B": { 
+        "Prima Fila": {"Feriale": [78, 14], "Festivo": [78, 14]},
         "Seconda Fila": {"Feriale": [68, 10], "Festivo": [68, 10]},
         "Terza Fila": {"Feriale": [68, 10], "Festivo": [68, 10]},
-        "Quarta Fila": {"Feriale": [62, 9], "Festivo": [62, 9]},
-        "Quinta Fila": {"Feriale": [62, 9], "Festivo": [62, 9]},
-        "Sesta Fila (Altre)": {"Feriale": [49, 8], "Festivo": [49, 8]}
+        "Quarta Fila": {"Feriale": [60, 9], "Festivo": [60, 9]},
+        "Quinta Fila": {"Feriale": [60, 9], "Festivo": [60, 9]},
+        "Sesta Fila (Altre)": {"Feriale": [52, 8], "Festivo": [52, 8]}
     }
 }
 
@@ -144,6 +153,7 @@ PREZZI_EXTRA = {
     "1 Asciugamano (Telo)": {"Feriale": 5, "Festivo": 6},
     "2 Asciugamani (Teli)": {"Feriale": 10, "Festivo": 12},
     "1 Lettino Extra, 1 Asciugamano (Telo)": {"Feriale": 15, "Festivo": 18},
+    "1 Lettino Extra, 2 Asciugamani (Teli)": {"Feriale": 27, "Festivo": 30},
     "2 Lettini Extra, 2 Asciugamani (Teli)": {"Feriale": 30, "Festivo": 36},
     "Postazione Esterna": {"Feriale": 44, "Festivo": 50}
 }
@@ -183,9 +193,19 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     suppl_persona = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][1]
     
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
-        prezzo_base -= 10.0
+        if stagione == "Peak Season A" and fila == "Sesta Fila (Altre)":
+            prezzo_base = 35.0
+        elif stagione == "Peak Season B" and fila == "Sesta Fila (Altre)":
+            prezzo_base = 38.0
+        elif stagione == "Altissima" and fila == "Sesta Fila (Altre)":
+            prezzo_base = 22.0 if persone == 1 else 30.0
+        else:
+            prezzo_base -= 10.0
     elif durata == "Solo 1 Persona (Postazione Ridotta)":
-        prezzo_base -= 5.0
+        if stagione == "Altissima" and fila == "Sesta Fila (Altre)":
+            prezzo_base = 32.0 if tipo_tariffa == "Festivo" else 30.0
+        else:
+            prezzo_base -= 5.0
             
     totale = prezzo_base
     if persone > 3: totale += suppl_persona
@@ -246,10 +266,33 @@ def applica_azione_rapida(idx, widget_key):
         st.session_state[widget_key] = "⚡ Azione"
 
 
+# =========================================================
+# AUTO-AGGIORNAMENTO SILENZIOSO PREZZI AL CARICAMENTO
+# =========================================================
+df_pren = carica_prenotazioni()
+if not df_pren.empty:
+    aggiornato_in_silenzio = False
+    oggi_dt = date.today()
+    for idx in df_pren.index:
+        try:
+            d_pd = pd.to_datetime(df_pren.loc[idx, 'Data'], errors='coerce')
+            if pd.notna(d_pd) and d_pd.date() >= oggi_dt:
+                lista_ex = [x.strip() for x in str(df_pren.loc[idx, 'Extra']).split(',')] if pd.notna(df_pren.loc[idx, 'Extra']) else []
+                pz_calc = calcola_prezzo_automatico(d_pd.date(), str(df_pren.loc[idx, 'Fila']), int(df_pren.loc[idx, 'Persone']), str(df_pren.loc[idx, 'Durata']), lista_ex)
+                
+                if str(df_pren.loc[idx, 'Incassato_da']) == "Ospite (Gratis)": pz_calc = 0.0
+                
+                if float(df_pren.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
+                    df_pren.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
+                    aggiornato_in_silenzio = True
+        except: pass
+    if aggiornato_in_silenzio:
+        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+        backup_istantaneo_telegram("Auto-aggiornamento listino tariffe")
+
+
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
-
-df_pren = carica_prenotazioni()
 
 operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
@@ -354,7 +397,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                                 
                         inc = str(edited_search.loc[idx, 'Incassato_da'])
                         sto = str(edited_search.loc[idx, 'Stato'])
-                        
                         if inc == "Ospite (Gratis)": edited_search.loc[idx, 'Prezzo_Giorno'] = 0.0
                         if inc not in ["", "nan", "Da saldare"]:
                             if sto == "Presente": edited_search.loc[idx, 'Stato'] = "Pres_Pagato"
@@ -371,7 +413,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
         else:
             st.info("Nessuna prenotazione presente nel sistema al momento.")
 
-# --- BARRA LATERALE E FORM PRENOTAZIONI ---
+# --- BARRA LATERALE E FORM PRENOTAZIONI CON BLOCCO DOPPIONI ---
 st.sidebar.header("📝 Nuova Prenotazione")
 date_selezionate = st.sidebar.date_input("Date", value=(date.today(), date.today()), format="DD/MM/YYYY")
 
@@ -444,6 +486,21 @@ if submit:
             if data_inizio > date.today() and len(cifre_tel) < 9: st.sidebar.error("🚨 ERRORE: Telefono obbligatorio per il futuro."); st.stop()
             
         giorni_totali = (data_fine - data_inizio).days + 1
+        
+        # --- CONTROLLO DOPPIONI ---
+        ha_doppioni = False
+        for i in range(giorni_totali):
+            g_str = (data_inizio + timedelta(days=i)).strftime("%Y-%m-%d")
+            for j in range(quantita_postazioni):
+                omb_check = int(input_ombrellone + j)
+                esiste = df_pren[(df_pren['Data'] == g_str) & (df_pren['Fila'] == input_fila) & (df_pren['Ombrellone'] == omb_check) & (df_pren['Stato'] != 'Libero')]
+                if not esiste.empty:
+                    ha_doppioni = True
+                    st.sidebar.error(f"🚨 ERRORE DOPPIONE: L'ombrellone {omb_check} in {input_fila} il {pd.to_datetime(g_str).strftime('%d/%m/%Y')} è già prenotato!")
+        
+        if ha_doppioni:
+            st.stop()
+            
         for i in range(giorni_totali):
             g_str = (data_inizio + timedelta(days=i)).strftime("%Y-%m-%d")
             pz_un = calcola_prezzo_automatico(data_inizio + timedelta(days=i), input_fila, input_persone, input_durata, input_extra)
