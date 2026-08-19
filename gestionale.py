@@ -179,7 +179,10 @@ CONFIGURAZIONE_COLONNE = {
     "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
     "Persone": st.column_config.NumberColumn("Persone", min_value=1, step=1),
-    "Extra": st.column_config.SelectboxColumn("Extra", options=[""] + list(PREZZI_EXTRA.keys())),
+    
+    # TRUCCO: Convertito in TextColumn intelligente. Niente più blocchi "None" o impossibilità di metterne due.
+    "Extra": st.column_config.TextColumn("Extra (Separa con virgola)"),
+    
     "Note": st.column_config.TextColumn("Note / Memo"),
     "Operatore": st.column_config.SelectboxColumn("Operatore", options=OPERATORI_SPIAGGIA),
     "Incassato_da": st.column_config.SelectboxColumn("Incassato da", options=OPZIONI_INCASSO)
@@ -200,19 +203,13 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     suppl_persona = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][1]
     
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
-        if stagione == "Peak Season A" and fila == "Sesta Fila (Altre)":
-            prezzo_base = 35.0
-        elif stagione == "Peak Season B" and fila == "Sesta Fila (Altre)":
-            prezzo_base = 38.0
-        elif stagione == "Altissima" and fila == "Sesta Fila (Altre)":
-            prezzo_base = 22.0 if persone == 1 else 30.0
-        else:
-            prezzo_base -= 10.0
+        if stagione == "Peak Season A" and fila == "Sesta Fila (Altre)": prezzo_base = 35.0
+        elif stagione == "Peak Season B" and fila == "Sesta Fila (Altre)": prezzo_base = 38.0
+        elif stagione == "Altissima" and fila == "Sesta Fila (Altre)": prezzo_base = 22.0 if persone == 1 else 30.0
+        else: prezzo_base -= 10.0
     elif durata == "Solo 1 Persona (Postazione Ridotta)":
-        if stagione == "Altissima" and fila == "Sesta Fila (Altre)":
-            prezzo_base = 32.0 if tipo_tariffa == "Festivo" else 30.0
-        else:
-            prezzo_base -= 5.0
+        if stagione == "Altissima" and fila == "Sesta Fila (Altre)": prezzo_base = 32.0 if tipo_tariffa == "Festivo" else 30.0
+        else: prezzo_base -= 5.0
             
     totale = prezzo_base
     
@@ -220,11 +217,14 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
     if persone > 3: 
         totale += (persone - 3) * suppl_persona
         
-    # SOMMA PURA DEGLI EXTRA (NATANTI, LETTINI, TELI)
+    # SOMMA PURA DEGLI EXTRA (Tolleranza testo libero)
     for ex in extra_scelti:
-        if ex in PREZZI_EXTRA: 
-            totale += PREZZI_EXTRA[ex][tipo_tariffa]
-            
+        ex_clean = ex.strip().lower()
+        for key_extra, valori_extra in PREZZI_EXTRA.items():
+            if key_extra.lower() == ex_clean:
+                totale += valori_extra[tipo_tariffa]
+                break
+                
     return float(totale)
 
 def carica_clienti():
@@ -243,6 +243,12 @@ def carica_prenotazioni():
                     df[col] = ""
                     
             df['Nome'] = df['Nome'].apply(pulisci_nome)
+            
+            # DISTRUZIONE DEI VECCHI "None"
+            for col in ['Hotel', 'Note', 'Extra']:
+                df[col] = df[col].astype(str).replace(to_replace=['None', 'none', 'nan', 'NaN'], value='')
+                df[col] = df[col].fillna("").apply(lambda x: "" if str(x).strip().lower() in ["none", "nan", ""] else str(x).strip())
+            
             df['Ombrellone'] = pd.to_numeric(df['Ombrellone'], errors='coerce').fillna(1).astype(int)
             df['Persone'] = pd.to_numeric(df['Persone'], errors='coerce').fillna(2).astype(int)
             df['Prezzo_Giorno'] = pd.to_numeric(df['Prezzo_Giorno'], errors='coerce').fillna(0.0)
@@ -335,7 +341,7 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente e inviato backup!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA VELOCE E LIBERO ---
+# --- 🔍 MOTORE DI RICERCA (LIBERO E VELOCE) ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
@@ -355,10 +361,13 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
                 risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
-                st.info("💡 Fai le modifiche, premi **INVIO** (o tocca fuori dalla cella) e poi clicca SALVA qui sotto.")
-                edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
+                st.info("💡 Fai le modifiche, premi **INVIO** sulla tastiera e poi clicca SALVA MODIFICHE qui sotto.")
                 
-                if st.button("💾 Salva Modifiche", type="primary", key="btn_ricerca"):
+                with st.form("form_ricerca"):
+                    edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
+                    btn_save_ricerca = st.form_submit_button("💾 Salva Modifiche", type="primary")
+                
+                if btn_save_ricerca:
                     edited_search['Data'] = pd.to_datetime(edited_search['Data'], errors='coerce')
                     edited_search = edited_search.dropna(subset=['Data'])
                     
@@ -377,7 +386,9 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                             edited_search.loc[idx, 'Nome'] = pulisci_nome(row_new['Nome'])
                             
                             if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
-                                pz = calcola_prezzo_automatico(row_new['Data'].date(), new_fila, new_persone, new_durata, [new_extra] if new_extra else [])
+                                # Trasformo la stringa di testo libero in una lista leggibile
+                                lista_extra_input = [e.strip() for e in new_extra.split(',')] if new_extra else []
+                                pz = calcola_prezzo_automatico(row_new['Data'].date(), new_fila, new_persone, new_durata, lista_extra_input)
                                 edited_search.loc[idx, 'Prezzo_Giorno'] = float(pz)
                                 edited_search.loc[idx, 'Extra'] = new_extra
                                 
@@ -509,35 +520,27 @@ if submit:
         st.session_state['reset_form'] += 1
         st.rerun()
 
-# --- AGGIORNAMENTO LISTINO MASSIVO ---
+# --- BACKUP LOCALE ---
 st.sidebar.markdown("---")
-st.sidebar.subheader("🔄 Ricalcolo Prezzi")
-st.sidebar.info("Clicca qui per applicare le tariffe del nuovo listino a tutte le prenotazioni future.")
-if st.sidebar.button("⚠️ Aggiorna Prezzi Automaticamente", type="primary", use_container_width=True):
-    df_update = carica_prenotazioni()
-    if not df_update.empty:
-        count = 0
-        oggi_dt = date.today()
-        for idx in df_update.index:
-            try:
-                d_pd = pd.to_datetime(df_update.loc[idx, 'Data'], errors='coerce')
-                if pd.notna(d_pd) and d_pd.date() >= oggi_dt:
-                    lista_ex = [x.strip() for x in str(df_update.loc[idx, 'Extra']).split(',')] if pd.notna(df_update.loc[idx, 'Extra']) else []
-                    pz_calc = calcola_prezzo_automatico(d_pd.date(), str(df_update.loc[idx, 'Fila']), int(df_update.loc[idx, 'Persone']), str(df_update.loc[idx, 'Durata']), lista_ex)
-                    
-                    if str(df_update.loc[idx, 'Incassato_da']) == "Ospite (Gratis)": pz_calc = 0.0
-                    
-                    if float(df_update.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
-                        df_update.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
-                        count += 1
-            except: pass
-        if count > 0:
-            df_update.to_csv(FILE_PRENOTAZIONI, index=False)
-            backup_istantaneo_telegram(f"Aggiornati massivamente {count} prezzi")
-            st.sidebar.success(f"✅ {count} prezzi aggiornati!")
-        else:
-            st.sidebar.info("I prezzi sono già tutti aggiornati.")
-        st.rerun()
+st.sidebar.subheader("💾 Backup Locale")
+
+if not df_pren.empty:
+    df_backup = df_pren.copy()
+    df_backup['Data'] = pd.to_datetime(df_backup['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
+    csv_backup = df_backup.to_csv(index=False, sep=';').encode('utf-8')
+    st.sidebar.download_button(label="⬇️ Scarica su Telefono/PC", data=csv_backup, file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv", mime="text/csv", type="primary")
+
+file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup", type=["csv"])
+if file_caricato is not None:
+    if st.sidebar.button("⚠️ Conferma Ripristino"):
+        try:
+            df_ripristino = pd.read_csv(file_caricato, sep=None, engine='python')
+            df_ripristino['Data'] = pd.to_datetime(df_ripristino['Data'], format='%d-%m-%Y', errors='coerce').fillna(pd.to_datetime(df_ripristino['Data'], errors='coerce')).dt.strftime('%Y-%m-%d')
+            df_ripristino.to_csv(FILE_PRENOTAZIONI, index=False)
+            st.sidebar.success("✅ Ripristino completato! Ricarica la pagina.")
+            st.rerun()
+        except Exception:
+            st.sidebar.error("❌ Formato file non valido.")
 
 # --- CONFERME WHATSAPP / EMAIL ---
 st.sidebar.markdown("---")
@@ -757,7 +760,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (VELOCE E SENZA TASTO SALVA)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA E LIBERA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
@@ -772,11 +775,12 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
         df_range_edit['Ord_Fila'] = df_range_edit['Fila'].map(ordine_file)
         df_range_edit = df_range_edit.sort_values(by=['Data', 'Ord_Fila', 'Ombrellone']).drop(columns=['Ord_Fila'])
         
-        st.info("💡 Fai le tue modifiche, **premi INVIO sulla tastiera** (o tocca fuori dalla cella) e il sistema salverà all'istante, senza pulsanti!")
-        
-        edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_dettagli")
-        
-        if not df_range_edit.equals(edited_range):
+        with st.form("form_tabella_oggi"):
+            st.info("💡 Fai le tue modifiche direttamente nelle celle (o cancella con il cestino) e poi clicca il pulsante qui sotto.")
+            edited_range = st.data_editor(df_range_edit, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_dettagli")
+            btn_salva_oggi = st.form_submit_button("💾 Salva Modifiche e Ricalcola Prezzi", type="primary")
+            
+        if btn_salva_oggi:
             edited_range['Data'] = pd.to_datetime(edited_range['Data'], errors='coerce')
             edited_range = edited_range.dropna(subset=['Data'])
             
@@ -796,13 +800,16 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     edited_range.loc[idx, 'Nome'] = pulisci_nome(row_new['Nome'])
                     
                     if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_fila != new_fila) and (old_prezzo == new_prezzo):
-                        nuovo_pz = calcola_prezzo_automatico(row_new['Data'].date(), new_fila, new_persone, new_durata, [new_extra] if new_extra else [])
+                        # Conversione da testo a lista
+                        lista_extra_input = [e.strip() for e in new_extra.split(',')] if new_extra else []
+                        nuovo_pz = calcola_prezzo_automatico(row_new['Data'].date(), new_fila, new_persone, new_durata, lista_extra_input)
                         edited_range.loc[idx, 'Prezzo_Giorno'] = float(nuovo_pz)
                         edited_range.loc[idx, 'Extra'] = new_extra
                         
                 inc = str(edited_range.loc[idx, 'Incassato_da'])
                 sto = str(edited_range.loc[idx, 'Stato'])
                 
+                # Blocco Ospiti = €0.0
                 if inc == "Ospite (Gratis)": edited_range.loc[idx, 'Prezzo_Giorno'] = 0.0
                 if inc not in ["", "nan", "Da saldare"]:
                     if sto == "Presente": edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
@@ -812,5 +819,6 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
             df_pren_new = df_pren.drop(index=df_range_edit.index)
             df_pren_new = pd.concat([df_pren_new, edited_range], ignore_index=True)
             df_pren_new.to_csv(FILE_PRENOTAZIONI, index=False)
-            backup_istantaneo_telegram("Modifiche dirette salvate da tabella Elenco Dettagliato")
+            backup_istantaneo_telegram("Modifiche salvate da tabella Elenco Dettagliato")
+            st.success("✅ Modifiche ed eliminazioni salvate con successo nel database e inviate al Backup!")
             st.rerun()
