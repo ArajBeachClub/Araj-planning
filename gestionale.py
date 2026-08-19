@@ -148,14 +148,21 @@ TARIFFE = {
 }
 
 PREZZI_EXTRA = {
-    "1 Lettino Extra": {"Feriale": 10, "Festivo": 12},
-    "2 Lettini Extra": {"Feriale": 20, "Festivo": 24},
-    "1 Asciugamano (Telo)": {"Feriale": 5, "Festivo": 6},
-    "2 Asciugamani (Teli)": {"Feriale": 10, "Festivo": 12},
-    "1 Lettino Extra, 1 Asciugamano (Telo)": {"Feriale": 15, "Festivo": 18},
-    "1 Lettino Extra, 2 Asciugamani (Teli)": {"Feriale": 27, "Festivo": 30},
-    "2 Lettini Extra, 2 Asciugamani (Teli)": {"Feriale": 30, "Festivo": 36},
-    "Postazione Esterna": {"Feriale": 44, "Festivo": 50}
+    "1 Lettino Extra": {"Feriale": 15, "Festivo": 15},
+    "2 Lettini Extra": {"Feriale": 30, "Festivo": 30},
+    "1 Asciugamano (Telo)": {"Feriale": 6, "Festivo": 6},
+    "2 Asciugamani (Teli)": {"Feriale": 12, "Festivo": 12},
+    "1 Lettino Extra, 1 Asciugamano (Telo)": {"Feriale": 21, "Festivo": 21},
+    "1 Lettino Extra, 2 Asciugamani (Teli)": {"Feriale": 27, "Festivo": 27},
+    "2 Lettini Extra, 2 Asciugamani (Teli)": {"Feriale": 42, "Festivo": 42},
+    "Postazione Esterna": {"Feriale": 60, "Festivo": 60},
+    "SUP 1 ora": {"Feriale": 18, "Festivo": 18},
+    "SUP mezz'ora": {"Feriale": 12, "Festivo": 12},
+    "Canoa singola 1 ora": {"Feriale": 18, "Festivo": 18},
+    "Canoa singola mezz'ora": {"Feriale": 12, "Festivo": 12},
+    "Canoa doppia 1 ora": {"Feriale": 25, "Festivo": 25},
+    "Canoa doppia mezz'ora": {"Feriale": 18, "Festivo": 18},
+    "Stazionamento SUP cliente": {"Feriale": 18, "Festivo": 18}
 }
 
 STATI_MAP = {
@@ -208,10 +215,16 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti):
             prezzo_base -= 5.0
             
     totale = prezzo_base
-    if persone > 3: totale += suppl_persona
+    
+    # SOMMA PURA DELLE PERSONE EXTRA
+    if persone > 3: 
+        totale += (persone - 3) * suppl_persona
         
+    # SOMMA PURA DEGLI EXTRA (NATANTI, LETTINI, TELI)
     for ex in extra_scelti:
-        if ex in PREZZI_EXTRA: totale += PREZZI_EXTRA[ex][tipo_tariffa]
+        if ex in PREZZI_EXTRA: 
+            totale += PREZZI_EXTRA[ex][tipo_tariffa]
+            
     return float(totale)
 
 def carica_clienti():
@@ -266,33 +279,10 @@ def applica_azione_rapida(idx, widget_key):
         st.session_state[widget_key] = "⚡ Azione"
 
 
-# =========================================================
-# AUTO-AGGIORNAMENTO SILENZIOSO PREZZI AL CARICAMENTO
-# =========================================================
-df_pren = carica_prenotazioni()
-if not df_pren.empty:
-    aggiornato_in_silenzio = False
-    oggi_dt = date.today()
-    for idx in df_pren.index:
-        try:
-            d_pd = pd.to_datetime(df_pren.loc[idx, 'Data'], errors='coerce')
-            if pd.notna(d_pd) and d_pd.date() >= oggi_dt:
-                lista_ex = [x.strip() for x in str(df_pren.loc[idx, 'Extra']).split(',')] if pd.notna(df_pren.loc[idx, 'Extra']) else []
-                pz_calc = calcola_prezzo_automatico(d_pd.date(), str(df_pren.loc[idx, 'Fila']), int(df_pren.loc[idx, 'Persone']), str(df_pren.loc[idx, 'Durata']), lista_ex)
-                
-                if str(df_pren.loc[idx, 'Incassato_da']) == "Ospite (Gratis)": pz_calc = 0.0
-                
-                if float(df_pren.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
-                    df_pren.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
-                    aggiornato_in_silenzio = True
-        except: pass
-    if aggiornato_in_silenzio:
-        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-        backup_istantaneo_telegram("Auto-aggiornamento listino tariffe")
-
-
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
+
+df_pren = carica_prenotazioni()
 
 operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
@@ -345,16 +335,14 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente e inviato backup!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA (SALVATAGGIO IMMEDIATO E VELOCE) ---
+# --- 🔍 MOTORE DI RICERCA VELOCE E LIBERO ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
         if not df_pren.empty:
             parole = ricerca.split()
             mask_nome = pd.Series(True, index=df_pren.index)
-            for parola in parole:
-                mask_nome &= df_pren['Nome'].astype(str).str.contains(parola, case=False, na=False)
-            
+            for parola in parole: mask_nome &= df_pren['Nome'].astype(str).str.contains(parola, case=False, na=False)
             mask_tel = df_pren['Telefono'].astype(str).str.contains(ricerca, case=False, na=False)
             mask_hotel = df_pren['Hotel'].astype(str).str.contains(ricerca, case=False, na=False)
             
@@ -363,16 +351,14 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} prenotazioni.")
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Note"]
-                
                 risultati_filtrati = risultati[colonne_ordine].copy()
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
                 risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
-                st.info("💡 Fai le tue modifiche direttamente nelle celle, poi premi **INVIO** sulla tastiera. Salva tutto in automatico all'istante.")
-                
+                st.info("💡 Fai le modifiche, premi **INVIO** (o tocca fuori dalla cella) e poi clicca SALVA qui sotto.")
                 edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                 
-                if not risultati_filtrati.equals(edited_search):
+                if st.button("💾 Salva Modifiche", type="primary", key="btn_ricerca"):
                     edited_search['Data'] = pd.to_datetime(edited_search['Data'], errors='coerce')
                     edited_search = edited_search.dropna(subset=['Data'])
                     
@@ -406,14 +392,15 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                     df_pren_new = df_pren.drop(index=risultati_filtrati.index)
                     df_pren_new = pd.concat([df_pren_new, edited_search], ignore_index=True)
                     df_pren_new.to_csv(FILE_PRENOTAZIONI, index=False)
-                    backup_istantaneo_telegram("Modifiche rapide salvate (Ricerca Clienti)")
+                    backup_istantaneo_telegram("Modifiche salvate da Ricerca Clienti")
+                    st.success("✅ Modifiche salvate e backup inviato!")
                     st.rerun()
             else:
                 st.warning(f"Nessuna prenotazione trovata per '{ricerca}'.")
         else:
             st.info("Nessuna prenotazione presente nel sistema al momento.")
 
-# --- BARRA LATERALE E FORM PRENOTAZIONI CON BLOCCO DOPPIONI ---
+# --- BARRA LATERALE E FORM PRENOTAZIONI ---
 st.sidebar.header("📝 Nuova Prenotazione")
 date_selezionate = st.sidebar.date_input("Date", value=(date.today(), date.today()), format="DD/MM/YYYY")
 
@@ -442,7 +429,7 @@ col_q, col_omb = st.sidebar.columns(2)
 with col_q: quantita_postazioni = st.sidebar.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
 with col_omb: input_ombrellone = st.sidebar.selectbox(f"N° Ombrellone Iniziale", list(range(1, max_ombrelloni_riga - quantita_postazioni + 2)), key="sb_omb")
 
-# SUGGERIMENTI CLIENTI GIA' ESISTENTI (CORAZZATO CONTRO GLI ERRORI)
+# SUGGERIMENTI CLIENTI GIA' ESISTENTI
 st.sidebar.markdown("---")
 st.sidebar.subheader("👤 Dati Cliente")
 lista_clienti = sorted(df_pren[df_pren['Nome'] != ""]['Nome'].unique().tolist())
@@ -522,27 +509,35 @@ if submit:
         st.session_state['reset_form'] += 1
         st.rerun()
 
-# --- BACKUP LOCALE ---
+# --- AGGIORNAMENTO LISTINO MASSIVO ---
 st.sidebar.markdown("---")
-st.sidebar.subheader("💾 Backup Locale")
-
-if not df_pren.empty:
-    df_backup = df_pren.copy()
-    df_backup['Data'] = pd.to_datetime(df_backup['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
-    csv_backup = df_backup.to_csv(index=False, sep=';').encode('utf-8')
-    st.sidebar.download_button(label="⬇️ Scarica su Telefono/PC", data=csv_backup, file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv", mime="text/csv", type="primary")
-
-file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup", type=["csv"])
-if file_caricato is not None:
-    if st.sidebar.button("⚠️ Conferma Ripristino"):
-        try:
-            df_ripristino = pd.read_csv(file_caricato, sep=None, engine='python')
-            df_ripristino['Data'] = pd.to_datetime(df_ripristino['Data'], format='%d-%m-%Y', errors='coerce').fillna(pd.to_datetime(df_ripristino['Data'], errors='coerce')).dt.strftime('%Y-%m-%d')
-            df_ripristino.to_csv(FILE_PRENOTAZIONI, index=False)
-            st.sidebar.success("✅ Ripristino completato! Ricarica la pagina.")
-            st.rerun()
-        except Exception:
-            st.sidebar.error("❌ Formato file non valido.")
+st.sidebar.subheader("🔄 Ricalcolo Prezzi")
+st.sidebar.info("Clicca qui per applicare le tariffe del nuovo listino a tutte le prenotazioni future.")
+if st.sidebar.button("⚠️ Aggiorna Prezzi Automaticamente", type="primary", use_container_width=True):
+    df_update = carica_prenotazioni()
+    if not df_update.empty:
+        count = 0
+        oggi_dt = date.today()
+        for idx in df_update.index:
+            try:
+                d_pd = pd.to_datetime(df_update.loc[idx, 'Data'], errors='coerce')
+                if pd.notna(d_pd) and d_pd.date() >= oggi_dt:
+                    lista_ex = [x.strip() for x in str(df_update.loc[idx, 'Extra']).split(',')] if pd.notna(df_update.loc[idx, 'Extra']) else []
+                    pz_calc = calcola_prezzo_automatico(d_pd.date(), str(df_update.loc[idx, 'Fila']), int(df_update.loc[idx, 'Persone']), str(df_update.loc[idx, 'Durata']), lista_ex)
+                    
+                    if str(df_update.loc[idx, 'Incassato_da']) == "Ospite (Gratis)": pz_calc = 0.0
+                    
+                    if float(df_update.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
+                        df_update.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
+                        count += 1
+            except: pass
+        if count > 0:
+            df_update.to_csv(FILE_PRENOTAZIONI, index=False)
+            backup_istantaneo_telegram(f"Aggiornati massivamente {count} prezzi")
+            st.sidebar.success(f"✅ {count} prezzi aggiornati!")
+        else:
+            st.sidebar.info("I prezzi sono già tutti aggiornati.")
+        st.rerun()
 
 # --- CONFERME WHATSAPP / EMAIL ---
 st.sidebar.markdown("---")
@@ -762,7 +757,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (SALVATAGGIO IMMEDIATO SENZA PULSANTI)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (VELOCE E SENZA TASTO SALVA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
