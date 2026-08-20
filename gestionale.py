@@ -164,7 +164,6 @@ PREZZI_EXTRA = {
     "Postazione Esterna": {"Feriale": 60, "Festivo": 60}
 }
 
-# MENU A TENDINA DEDICATO PER I NATANTI
 PREZZI_NATANTI = {
     "SUP 1 ora": {"Feriale": 18, "Festivo": 18},
     "SUP mezz'ora": {"Feriale": 12, "Festivo": 12},
@@ -190,11 +189,8 @@ CONFIGURAZIONE_COLONNE = {
     "Durata": st.column_config.SelectboxColumn("Durata", options=["Giornata Intera", "Mezza Giornata (fino 13 / da 15.30)", "Solo 1 Persona (Postazione Ridotta)"]),
     "Prezzo_Giorno": st.column_config.NumberColumn("Prezzo (€)", step=1.0),
     "Persone": st.column_config.NumberColumn("Persone", min_value=1, step=1),
-    
-    # QUI HO RIMESSO LE TENDINE COME LE VOLEVI TU
     "Extra": st.column_config.SelectboxColumn("Extra", options=[""] + list(PREZZI_EXTRA.keys())),
     "Natanti": st.column_config.SelectboxColumn("Natanti", options=[""] + list(PREZZI_NATANTI.keys())),
-    
     "Note": st.column_config.TextColumn("Note / Memo"),
     "Operatore": st.column_config.SelectboxColumn("Operatore", options=OPERATORI_SPIAGGIA),
     "Incassato_da": st.column_config.SelectboxColumn("Incassato da", options=OPZIONI_INCASSO)
@@ -296,35 +292,10 @@ def applica_azione_rapida(idx, widget_key):
         st.session_state[widget_key] = "⚡ Azione"
 
 
-# =========================================================
-# AUTO-AGGIORNAMENTO SILENZIOSO PREZZI AL CARICAMENTO
-# =========================================================
-df_pren = carica_prenotazioni()
-if not df_pren.empty:
-    aggiornato_in_silenzio = False
-    oggi_dt = date.today()
-    for idx in df_pren.index:
-        try:
-            d_pd = pd.to_datetime(df_pren.loc[idx, 'Data'], errors='coerce')
-            if pd.notna(d_pd) and d_pd.date() >= oggi_dt:
-                lista_ex = [str(df_pren.loc[idx, 'Extra']).strip()] if pd.notna(df_pren.loc[idx, 'Extra']) and str(df_pren.loc[idx, 'Extra']).strip() != "" else []
-                lista_nat = [str(df_pren.loc[idx, 'Natanti']).strip()] if 'Natanti' in df_pren.columns and pd.notna(df_pren.loc[idx, 'Natanti']) and str(df_pren.loc[idx, 'Natanti']).strip() != "" else []
-                
-                pz_calc = calcola_prezzo_automatico(d_pd.date(), str(df_pren.loc[idx, 'Fila']), int(df_pren.loc[idx, 'Persone']), str(df_pren.loc[idx, 'Durata']), lista_ex, lista_nat)
-                
-                if str(df_pren.loc[idx, 'Incassato_da']) == "Ospite (Gratis)": pz_calc = 0.0
-                
-                if float(df_pren.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
-                    df_pren.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
-                    aggiornato_in_silenzio = True
-        except: pass
-    if aggiornato_in_silenzio:
-        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
-        backup_istantaneo_telegram("Auto-aggiornamento listino tariffe")
-
-
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
+
+df_pren = carica_prenotazioni()
 
 operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
@@ -393,7 +364,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} prenotazioni.")
                 
-                # ORDINE COLONNE CON EXTRA E NATANTI VICINI
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Natanti", "Note"]
                 risultati_filtrati = risultati[colonne_ordine].copy()
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
@@ -596,6 +566,28 @@ if st.sidebar.button("⚠️ Aggiorna Prezzi Automaticamente", type="primary", u
         else:
             st.sidebar.info("I prezzi sono già tutti aggiornati.")
         st.rerun()
+
+# --- BACKUP LOCALE ---
+st.sidebar.markdown("---")
+st.sidebar.subheader("💾 Backup Locale")
+
+if not df_pren.empty:
+    df_backup = df_pren.copy()
+    df_backup['Data'] = pd.to_datetime(df_backup['Data'], errors='coerce').dt.strftime('%d-%m-%Y')
+    csv_backup = df_backup.to_csv(index=False, sep=';').encode('utf-8')
+    st.sidebar.download_button(label="⬇️ Scarica su Telefono/PC", data=csv_backup, file_name=f"prenotazioni_{date.today().strftime('%d-%m-%Y')}.csv", mime="text/csv", type="primary")
+
+file_caricato = st.sidebar.file_uploader("⬆️ Ripristina un Backup", type=["csv"])
+if file_caricato is not None:
+    if st.sidebar.button("⚠️ Conferma Ripristino"):
+        try:
+            df_ripristino = pd.read_csv(file_caricato, sep=None, engine='python')
+            df_ripristino['Data'] = pd.to_datetime(df_ripristino['Data'], format='%d-%m-%Y', errors='coerce').fillna(pd.to_datetime(df_ripristino['Data'], errors='coerce')).dt.strftime('%Y-%m-%d')
+            df_ripristino.to_csv(FILE_PRENOTAZIONI, index=False)
+            st.sidebar.success("✅ Ripristino completato! Ricarica la pagina.")
+            st.rerun()
+        except Exception:
+            st.sidebar.error("❌ Formato file non valido.")
 
 # --- CONFERME WHATSAPP / EMAIL ---
 st.sidebar.markdown("---")
@@ -815,11 +807,11 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA E ORDINATA)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA CON I MENU A TENDINA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
-        # Ordine colonne rigoroso con NATANTI VICINO AGLI EXTRA
+        # Ordine colonne rigoroso, senza "Sconto"
         colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Natanti", "Note"]
         if 'Hotel' in df_range.columns: colonne_tabella.insert(4, "Hotel")
         
@@ -858,7 +850,6 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     edited_range.loc[idx, 'Nome'] = pulisci_nome(row_new['Nome'])
                     
                     if (old_durata != new_durata or old_persone != new_persone or old_extra != new_extra or old_natanti != new_natanti or old_fila != new_fila) and (old_prezzo == new_prezzo):
-                        # Conversione per calcolo
                         lista_extra_input = [new_extra] if new_extra else []
                         lista_natanti_input = [new_natanti] if new_natanti else []
                         
