@@ -114,11 +114,12 @@ CAPIENZA_FILE = {
     "Sesta Fila (Altre)": 6
 }
 
+# AGGIORNATE LE DATE DI AGOSTO (Il 24-31 ora usa Peak Season A come richiesto)
 STAGIONI_DATE = {
     "Alta B": [(date(2026, 6, 27), date(2026, 7, 10))],
     "Alta C": [(date(2026, 7, 11), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
-    "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 8, 24), date(2026, 8, 31))],
-    "Peak Season A": [(date(2026, 8, 1), date(2026, 8, 7))],
+    "Altissima": [(date(2026, 7, 18), date(2026, 7, 31))],
+    "Peak Season A": [(date(2026, 8, 1), date(2026, 8, 7)), (date(2026, 8, 24), date(2026, 8, 31))],
     "Peak Season B": [(date(2026, 8, 8), date(2026, 8, 23))]
 }
 
@@ -180,7 +181,6 @@ STATI_MAP = {
     "Liberato Solo Mattina (Rivendibile)": "Libero_Mat", "Liberato Solo Pomeriggio (Rivendibile)": "Libero_Pom", "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
-# TENDINE DA SCHIACCIARE (Niente più testi liberi!)
 CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Confermato", "Attesa", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
@@ -210,7 +210,6 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti, nat
     prezzo_base = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][0]
     suppl_persona = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][1]
     
-    # Sottrazione pura
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
         if stagione == "Peak Season A" and fila == "Sesta Fila (Altre)": prezzo_base = 35.0
         elif stagione == "Peak Season B" and fila == "Sesta Fila (Altre)": prezzo_base = 38.0
@@ -222,7 +221,6 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti, nat
             
     totale = prezzo_base
     
-    # Somma Pura
     if persone > 3: 
         totale += (persone - 3) * suppl_persona
         
@@ -252,7 +250,6 @@ def carica_prenotazioni():
                     
             df['Nome'] = df['Nome'].apply(pulisci_nome)
             
-            # SPAZZINO "None": Distrugge i None e fa tornare le celle vuote per i menu a tendina
             for col in ['Hotel', 'Note', 'Extra', 'Natanti']:
                 df[col] = df[col].astype(str).replace(to_replace=['None', 'none', 'nan', 'NaN'], value='')
                 df[col] = df[col].fillna("").apply(lambda x: "" if str(x).strip().lower() in ["none", "nan", ""] else str(x).strip())
@@ -292,10 +289,35 @@ def applica_azione_rapida(idx, widget_key):
         st.session_state[widget_key] = "⚡ Azione"
 
 
+# =========================================================
+# AUTO-AGGIORNAMENTO SILENZIOSO PREZZI AL CARICAMENTO
+# =========================================================
+df_pren = carica_prenotazioni()
+if not df_pren.empty:
+    aggiornato_in_silenzio = False
+    oggi_dt = date.today()
+    for idx in df_pren.index:
+        try:
+            d_pd = pd.to_datetime(df_pren.loc[idx, 'Data'], errors='coerce')
+            if pd.notna(d_pd) and d_pd.date() >= oggi_dt:
+                lista_ex = [str(df_pren.loc[idx, 'Extra']).strip()] if pd.notna(df_pren.loc[idx, 'Extra']) and str(df_pren.loc[idx, 'Extra']).strip() != "" else []
+                lista_nat = [str(df_pren.loc[idx, 'Natanti']).strip()] if 'Natanti' in df_pren.columns and pd.notna(df_pren.loc[idx, 'Natanti']) and str(df_pren.loc[idx, 'Natanti']).strip() != "" else []
+                
+                pz_calc = calcola_prezzo_automatico(d_pd.date(), str(df_pren.loc[idx, 'Fila']), int(df_pren.loc[idx, 'Persone']), str(df_pren.loc[idx, 'Durata']), lista_ex, lista_nat)
+                
+                if str(df_pren.loc[idx, 'Incassato_da']) == "Ospite (Gratis)": pz_calc = 0.0
+                
+                if float(df_pren.loc[idx, 'Prezzo_Giorno']) != float(pz_calc):
+                    df_pren.at[idx, 'Prezzo_Giorno'] = float(pz_calc)
+                    aggiornato_in_silenzio = True
+        except: pass
+    if aggiornato_in_silenzio:
+        df_pren.to_csv(FILE_PRENOTAZIONI, index=False)
+        backup_istantaneo_telegram("Auto-aggiornamento listino tariffe")
+
+
 st.set_page_config(page_title="Beach Pass Pro", layout="wide")
 st.title("🏖️ Beach Pass - Planning Ombrelloni Pro")
-
-df_pren = carica_prenotazioni()
 
 operatore_attivo = st.selectbox("👤 Operatore Attivo (Le tue modifiche avranno questa firma):", OPERATORI_SPIAGGIA, key="sb_operatore")
 st.divider()
@@ -348,7 +370,7 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente e inviato backup!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA VELOCE E PULITO ---
+# --- 🔍 MOTORE DI RICERCA VELOCE ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
@@ -370,7 +392,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
                 with st.form("form_ricerca"):
-                    st.info("💡 Fai le tue modifiche cliccando nelle celle, poi clicca SALVA MODIFICHE.")
+                    st.info("💡 Fai le tue modifiche cliccando nelle tendine (o cancella con il cestino) e poi clicca il pulsante qui sotto.")
                     edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                     btn_save_ricerca = st.form_submit_button("💾 Salva Modifiche", type="primary")
                 
@@ -452,7 +474,6 @@ col_q, col_omb = st.sidebar.columns(2)
 with col_q: quantita_postazioni = st.sidebar.selectbox("Quante postazioni vicine?", [1, 2, 3], index=0)
 with col_omb: input_ombrellone = st.sidebar.selectbox(f"N° Ombrellone Iniziale", list(range(1, max_ombrelloni_riga - quantita_postazioni + 2)), key="sb_omb")
 
-# SUGGERIMENTI CLIENTI
 st.sidebar.markdown("---")
 st.sidebar.subheader("👤 Dati Cliente")
 lista_clienti = sorted(df_pren[df_pren['Nome'] != ""]['Nome'].unique().tolist())
@@ -500,7 +521,6 @@ if submit:
             
         giorni_totali = (data_fine - data_inizio).days + 1
         
-        # BLOCCO DOPPIONI
         ha_doppioni = False
         for i in range(giorni_totali):
             g_str = (data_inizio + timedelta(days=i)).strftime("%Y-%m-%d")
@@ -807,11 +827,10 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA CON I MENU A TENDINA)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA E ORDINATA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
-        # Ordine colonne rigoroso, senza "Sconto"
         colonne_tabella = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Natanti", "Note"]
         if 'Hotel' in df_range.columns: colonne_tabella.insert(4, "Hotel")
         
@@ -861,7 +880,6 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                 inc = str(edited_range.loc[idx, 'Incassato_da'])
                 sto = str(edited_range.loc[idx, 'Stato'])
                 
-                # Blocco Ospiti = €0.0
                 if inc == "Ospite (Gratis)": edited_range.loc[idx, 'Prezzo_Giorno'] = 0.0
                 if inc not in ["", "nan", "Da saldare"]:
                     if sto == "Presente": edited_range.loc[idx, 'Stato'] = "Pres_Pagato"
