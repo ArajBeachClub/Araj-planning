@@ -114,27 +114,28 @@ CAPIENZA_FILE = {
     "Sesta Fila (Altre)": 6
 }
 
-# AGGIORNATE LE DATE DI AGOSTO (Il 24-31 ora usa Peak Season A come richiesto)
+# DATE AGGIORNATE: L'Altissima stagione copre fino al 7 Settembre. Dal 8 Settembre torna Alta C.
 STAGIONI_DATE = {
     "Alta B": [(date(2026, 6, 27), date(2026, 7, 10))],
-    "Alta C": [(date(2026, 7, 11), date(2026, 7, 17)), (date(2026, 9, 1), date(2026, 9, 27))],
-    "Altissima": [(date(2026, 7, 18), date(2026, 7, 31))],
-    "Peak Season A": [(date(2026, 8, 1), date(2026, 8, 7)), (date(2026, 8, 24), date(2026, 8, 31))],
+    "Alta C": [(date(2026, 7, 11), date(2026, 7, 17)), (date(2026, 9, 8), date(2026, 9, 27))],
+    "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 8, 24), date(2026, 9, 7))],
+    "Peak Season A": [(date(2026, 8, 1), date(2026, 8, 7))],
     "Peak Season B": [(date(2026, 8, 8), date(2026, 8, 23))]
 }
 
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
+# TARIFFE ALTISSIMA AGGIORNATE CON I PREZZI DELLO SCREEN (1^ sett settembre)
 TARIFFE = {
     "Alta B": {"Prima Fila": {"Feriale": [42, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Terza Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Quarta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Quinta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [37, 6]}},
     "Alta C": {"Prima Fila": {"Feriale": [44, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Terza Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Quarta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Quinta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Sesta Fila (Altre)": {"Feriale": [35, 5], "Festivo": [38, 6]}},
     "Altissima": {
-        "Prima Fila": {"Feriale": [56, 12], "Festivo": [58, 12]},
-        "Seconda Fila": {"Feriale": [53, 10], "Festivo": [55, 10]},
-        "Terza Fila": {"Feriale": [53, 10], "Festivo": [55, 10]},
-        "Quarta Fila": {"Feriale": [49, 8], "Festivo": [52, 8]},
-        "Quinta Fila": {"Feriale": [49, 8], "Festivo": [52, 8]},
-        "Sesta Fila (Altre)": {"Feriale": [42, 6], "Festivo": [44, 7]}
+        "Prima Fila": {"Feriale": [56, 12], "Festivo": [60, 12]},
+        "Seconda Fila": {"Feriale": [53, 10], "Festivo": [56, 10]},
+        "Terza Fila": {"Feriale": [53, 10], "Festivo": [56, 10]},
+        "Quarta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]},
+        "Quinta Fila": {"Feriale": [49, 7], "Festivo": [52, 8]},
+        "Sesta Fila (Altre)": {"Feriale": [43, 6], "Festivo": [46, 7]}
     },
     "Peak Season A": { 
         "Prima Fila": {"Feriale": [75, 14], "Festivo": [75, 14]},
@@ -181,6 +182,7 @@ STATI_MAP = {
     "Liberato Solo Mattina (Rivendibile)": "Libero_Mat", "Liberato Solo Pomeriggio (Rivendibile)": "Libero_Pom", "Completamente Libero / Cancella (Verde)": "Libero"
 }
 
+# TENDINE DA SCHIACCIARE (Niente più testi liberi!)
 CONFIGURAZIONE_COLONNE = {
     "Data": st.column_config.DateColumn("Data", format="DD/MM/YYYY"),
     "Stato": st.column_config.SelectboxColumn("Stato", options=["Confermato", "Attesa", "Presente", "Pagato", "Pres_Pagato", "Libero_Mat", "Libero_Pom", "Libero"]),
@@ -288,7 +290,6 @@ def applica_azione_rapida(idx, widget_key):
                     backup_istantaneo_telegram(f"Azione rapida: Pagato da {nome_breve} per {df.loc[idx, 'Nome']}")
         st.session_state[widget_key] = "⚡ Azione"
 
-
 # =========================================================
 # AUTO-AGGIORNAMENTO SILENZIOSO PREZZI AL CARICAMENTO
 # =========================================================
@@ -370,7 +371,7 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente e inviato backup!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA VELOCE ---
+# --- 🔍 MOTORE DI RICERCA VELOCE E PULITO ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
@@ -392,7 +393,7 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
                 risultati_filtrati = risultati_filtrati.dropna(subset=['Data'])
                 
                 with st.form("form_ricerca"):
-                    st.info("💡 Fai le tue modifiche cliccando nelle tendine (o cancella con il cestino) e poi clicca il pulsante qui sotto.")
+                    st.info("💡 Fai le tue modifiche cliccando nelle tendine (o cancella con il cestino) e poi clicca SALVA MODIFICHE.")
                     edited_search = st.data_editor(risultati_filtrati, num_rows="dynamic", use_container_width=True, column_config=CONFIGURAZIONE_COLONNE, key="editor_ricerca")
                     btn_save_ricerca = st.form_submit_button("💾 Salva Modifiche", type="primary")
                 
@@ -521,6 +522,7 @@ if submit:
             
         giorni_totali = (data_fine - data_inizio).days + 1
         
+        # BLOCCO DOPPIONI
         ha_doppioni = False
         for i in range(giorni_totali):
             g_str = (data_inizio + timedelta(days=i)).strftime("%Y-%m-%d")
@@ -827,7 +829,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA E ORDINATA)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA CON I MENU A TENDINA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
