@@ -114,12 +114,18 @@ CAPIENZA_FILE = {
     "Sesta Fila (Altre)": 6
 }
 
-# CALENDARIO AGGIORNATO COME RICHIESTO
+# CALENDARIO AGGIORNATO CON FASCIA SPECIALE 26-30 AGOSTO
 STAGIONI_DATE = {
     "Alta B": [(date(2026, 6, 27), date(2026, 7, 10))],
     "Alta C": [(date(2026, 7, 11), date(2026, 7, 17)), (date(2026, 9, 8), date(2026, 9, 27))],
-    "Altissima": [(date(2026, 7, 18), date(2026, 7, 31)), (date(2026, 9, 1), date(2026, 9, 7))],
-    "Peak Season A": [(date(2026, 8, 1), date(2026, 8, 7)), (date(2026, 8, 24), date(2026, 8, 31))],
+    "Altissima": [
+        (date(2026, 7, 18), date(2026, 7, 31)), 
+        (date(2026, 8, 24), date(2026, 8, 25)), 
+        (date(2026, 8, 31), date(2026, 8, 31)), 
+        (date(2026, 9, 1), date(2026, 9, 7))
+    ],
+    "Fine Agosto (26-30)": [(date(2026, 8, 26), date(2026, 8, 30))],
+    "Peak Season A": [(date(2026, 8, 1), date(2026, 8, 7))],
     "Peak Season B": [(date(2026, 8, 8), date(2026, 8, 23))]
 }
 
@@ -136,6 +142,14 @@ TARIFFE = {
         "Quarta Fila": {"Feriale": [49, 8], "Festivo": [52, 8]},
         "Quinta Fila": {"Feriale": [49, 8], "Festivo": [52, 8]},
         "Sesta Fila (Altre)": {"Feriale": [43, 8], "Festivo": [46, 8]}
+    },
+    "Fine Agosto (26-30)": {
+        "Prima Fila": {"Feriale": [60, 12], "Festivo": [70, 12]},
+        "Seconda Fila": {"Feriale": [55, 10], "Festivo": [65, 10]},
+        "Terza Fila": {"Feriale": [55, 10], "Festivo": [65, 10]},
+        "Quarta Fila": {"Feriale": [50, 8], "Festivo": [60, 8]},
+        "Quinta Fila": {"Feriale": [50, 8], "Festivo": [60, 8]},
+        "Sesta Fila (Altre)": {"Feriale": [45, 8], "Festivo": [55, 8]}
     },
     "Peak Season A": { 
         "Prima Fila": {"Feriale": [75, 14], "Festivo": [75, 14]},
@@ -214,7 +228,7 @@ def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti, nat
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
         if stagione == "Peak Season A" and fila == "Sesta Fila (Altre)": prezzo_base = 35.0
         elif stagione == "Peak Season B" and fila == "Sesta Fila (Altre)": prezzo_base = 38.0
-        elif stagione == "Altissima" and fila == "Sesta Fila (Altre)": prezzo_base = 22.0 if persone == 1 else 35.0
+        elif stagione == "Altissima" and fila == "Sesta Fila (Altre)": prezzo_base = 22.0 if persone == 1 else 30.0
         else: prezzo_base -= 10.0
     elif durata == "Solo 1 Persona (Postazione Ridotta)":
         if stagione == "Altissima" and fila == "Sesta Fila (Altre)": prezzo_base = 32.0 if tipo_tariffa == "Festivo" else 30.0
@@ -371,7 +385,7 @@ with st.expander("💼 Saldo Clienti Abituali (Pagamento Cumulativo / Sconti di 
                     st.success("Saldo registrato correttamente e inviato backup!")
                     st.rerun()
 
-# --- 🔍 MOTORE DI RICERCA VELOCE E PULITO ---
+# --- 🔍 MOTORE DI RICERCA ---
 with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
     ricerca = st.text_input("Inserisci una parte del Nome, del Telefono o dell'Hotel:", placeholder="Es. Armando Botta, 328...").strip()
     if ricerca:
@@ -386,7 +400,6 @@ with st.expander("🔍 Cerca Cliente / Modifica Rapida", expanded=False):
             
             if not risultati.empty:
                 st.success(f"Trovate {len(risultati)} prenotazioni.")
-                
                 colonne_ordine = ["Data", "Fila", "Ombrellone", "Nome", "Telefono", "Hotel", "Stato", "Operatore", "Incassato_da", "Prezzo_Giorno", "Persone", "Durata", "Extra", "Natanti", "Note"]
                 risultati_filtrati = risultati[colonne_ordine].copy()
                 risultati_filtrati['Data'] = pd.to_datetime(risultati_filtrati['Data'], errors='coerce').dt.date
@@ -829,7 +842,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA CON I MENU A TENDINA)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA E ORDINATA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
