@@ -109,29 +109,28 @@ CAPIENZA_FILE = {
     "Prima Fila": 21,
     "Seconda Fila": 21,
     "Terza Fila": 12,
-    "Quarta Fila": 8,
-    "Quinta Fila": 6,
-    "Sesta Fila (Altre)": 3
+    "Quarta Fila": 10,
+    "Quinta Fila": 7,
+    "Sesta Fila (Altre)": 6
 }
 
-# CALENDARIO AGGIORNATO CON FASCIA SPECIALE 26-30 AGOSTO
 STAGIONI_DATE = {
     "Alta B": [(date(2026, 6, 27), date(2026, 7, 10))],
-    "Alta C": [(date(2026, 7, 11), date(2026, 7, 17)), (date(2026, 9, 8), date(2026, 9, 27))],
+    "Alta C": [(date(2026, 7, 11), date(2026, 7, 17))],
     "Altissima": [
         (date(2026, 7, 18), date(2026, 7, 31)), 
         (date(2026, 8, 24), date(2026, 8, 25)), 
         (date(2026, 8, 31), date(2026, 8, 31)), 
-        (date(2026, 9, 1), date(2026, 9, 7))
+        (date(2026, 9, 1), date(2026, 9, 2))
     ],
     "Fine Agosto (26-30)": [(date(2026, 8, 26), date(2026, 8, 30))],
     "Peak Season A": [(date(2026, 8, 1), date(2026, 8, 7))],
-    "Peak Season B": [(date(2026, 8, 8), date(2026, 8, 23))]
+    "Peak Season B": [(date(2026, 8, 8), date(2026, 8, 23))],
+    "Settembre": [(date(2026, 9, 3), date(2026, 9, 30))]
 }
 
 GIORNI_FESTIVI = [date(2026, 6, 2), date(2026, 8, 15)]
 
-# TARIFFE AGGIORNATE CON IL NUOVO SCAGLIONAMENTO
 TARIFFE = {
     "Alta B": {"Prima Fila": {"Feriale": [42, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Terza Fila": {"Feriale": [38, 7], "Festivo": [42, 8]}, "Quarta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Quinta Fila": {"Feriale": [36, 6], "Festivo": [40, 7]}, "Sesta Fila (Altre)": {"Feriale": [34, 5], "Festivo": [37, 6]}},
     "Alta C": {"Prima Fila": {"Feriale": [44, 8], "Festivo": [50, 10]}, "Seconda Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Terza Fila": {"Feriale": [40, 7], "Festivo": [45, 8]}, "Quarta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Quinta Fila": {"Feriale": [38, 6], "Festivo": [42, 7]}, "Sesta Fila (Altre)": {"Feriale": [35, 5], "Festivo": [38, 6]}},
@@ -166,6 +165,14 @@ TARIFFE = {
         "Quarta Fila": {"Feriale": [60, 9], "Festivo": [60, 9]},
         "Quinta Fila": {"Feriale": [60, 9], "Festivo": [60, 9]},
         "Sesta Fila (Altre)": {"Feriale": [52, 8], "Festivo": [52, 8]}
+    },
+    "Settembre": {
+        "Prima Fila": {"Feriale": [50, 8], "Festivo": [50, 8]},
+        "Seconda Fila": {"Feriale": [40, 7], "Festivo": [40, 7]},
+        "Terza Fila": {"Feriale": [40, 7], "Festivo": [40, 7]},
+        "Quarta Fila": {"Feriale": [35, 6], "Festivo": [35, 6]},
+        "Quinta Fila": {"Feriale": [35, 6], "Festivo": [35, 6]},
+        "Sesta Fila (Altre)": {"Feriale": [35, 5], "Festivo": [35, 5]}
     }
 }
 
@@ -215,20 +222,20 @@ def trova_stagione(data_sel):
     for stagione, intervalli in STAGIONI_DATE.items():
         for inizio, fine in intervalli:
             if inizio <= data_sel <= fine: return stagione
-    return "Alta B"
+    return "Settembre"
 
 def calcola_prezzo_automatico(data_sel, fila, persone, durata, extra_scelti, natanti_scelti):
     stagione = trova_stagione(data_sel)
     giorno_sett = data_sel.weekday()
     tipo_tariffa = "Festivo" if (giorno_sett >= 5 or data_sel in GIORNI_FESTIVI or (data_sel + timedelta(days=1)) in GIORNI_FESTIVI) else "Feriale"
     
-    prezzo_base = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][0]
-    suppl_persona = TARIFFE.get(stagione, TARIFFE["Alta B"]).get(fila, TARIFFE["Alta B"]["Sesta Fila (Altre)"])[tipo_tariffa][1]
+    prezzo_base = TARIFFE.get(stagione, TARIFFE["Settembre"]).get(fila, TARIFFE["Settembre"]["Sesta Fila (Altre)"])[tipo_tariffa][0]
+    suppl_persona = TARIFFE.get(stagione, TARIFFE["Settembre"]).get(fila, TARIFFE["Settembre"]["Sesta Fila (Altre)"])[tipo_tariffa][1]
     
     if durata == "Mezza Giornata (fino 13 / da 15.30)":
         if stagione == "Peak Season A" and fila == "Sesta Fila (Altre)": prezzo_base = 35.0
         elif stagione == "Peak Season B" and fila == "Sesta Fila (Altre)": prezzo_base = 38.0
-        elif stagione == "Altissima" and fila == "Sesta Fila (Altre)": prezzo_base = 22.0 if persone == 1 else 30.0
+        elif stagione == "Altissima" and fila == "Sesta Fila (Altre)": prezzo_base = 22.0 if persone == 1 else 35.0
         else: prezzo_base -= 10.0
     elif durata == "Solo 1 Persona (Postazione Ridotta)":
         if stagione == "Altissima" and fila == "Sesta Fila (Altre)": prezzo_base = 32.0 if tipo_tariffa == "Festivo" else 30.0
@@ -535,7 +542,6 @@ if submit:
             
         giorni_totali = (data_fine - data_inizio).days + 1
         
-        # BLOCCO DOPPIONI
         ha_doppioni = False
         for i in range(giorni_totali):
             g_str = (data_inizio + timedelta(days=i)).strftime("%Y-%m-%d")
@@ -676,10 +682,10 @@ if nome_wa and date_wa:
                 testo_base = f"Dear {nome_wa},\n\nYour reservation {stringa_date_eng}{fila_formattata_eng} has been successfully recorded at Araj Beach Club.\n\nWe remind you to arrive by 11:00 AM. In case of delay, please notify us promptly by sending a WhatsApp message to +39 3391789319, indicating your reference name and reservation dates.\n\nOtherwise, the reservation will be canceled from the system and the spot will be released.\n\nThank you and see you soon!\n\n{operatore_attivo}"
                 oggetto = "Reservation Confirmation - Araj Beach Club"
             elif lingua_scelta == "Français":
-                testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidement en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du sistema et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
+                testo_base = f"Cher/Chère {nome_wa},\n\nVotre réservation {stringa_date_fra}{fila_formattata_fra} a été enregistrée correctement à l'Araj Beach Club.\n\nNous vous rappelons d'arriver avant 11h00. En cas de retard, veuillez nous avertir rapidamente en envoyant un message WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates de réservation.\n\nDans le cas contraire, la réservation sera annulée du sistema et l'emplacement sera libéré.\n\nMerci et à bientôt !\n\n{operatore_attivo}"
                 oggetto = "Confirmation de Réservation - Araj Beach Club"
             elif lingua_scelta == "Español":
-                testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, le rogamos que avise a tiempo enviando un mensaje de WhatsApp al número +39 3391789319, indicando el nombre de referencia y las fechas de la reserva.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias y hasta pronto!\n\n{operatore_attivo}"
+                testo_base = f"Estimado/a {nome_wa},\n\nSu reserva {stringa_date_esp}{fila_formattata_esp} ha sido registrada correctamente en Araj Beach Club.\n\nLe recordamos llegar antes de las 11:00 AM. En caso de retraso, le rogamos que avise a tiempo enviando un mensaje de WhatsApp al número +39 3391789319, indicando el nome de referencia y las fechas de la reserva.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias y hasta pronto!\n\n{operatore_attivo}"
                 oggetto = "Confirmación de Reserva - Araj Beach Club"
         else:
             if lingua_scelta == "Italiano":
@@ -692,7 +698,7 @@ if nome_wa and date_wa:
                 testo_base = f"Cher Staff de {nome_wa},\n\nNous confirmons la réservation {stringa_date_fra}{fila_formattata_fra} pour vos clients.\n\nVeuillez nous informer de tout retard avant 11h00 via WhatsApp au +39 3391789319, en indiquant le nom de référence et les dates.\n\nDans le cas contraire, la réservation sera annulée du système et l'emplacement sera libéré.\n\nMerci pour votre précieuse collaboration !\n\n{operatore_attivo}\nAraj Beach Club"
                 oggetto = "Confirmation de Réservation Clients - Araj Beach Club"
             elif lingua_scelta == "Español":
-                testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nombre de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_attivo}\nAraj Beach Club"
+                testo_base = f"Estimado Equipo de {nome_wa},\n\nConfirmamos la reserva {stringa_date_esp}{fila_formattata_esp} para sus huéspedes.\n\nPor favor infórmenos de cualquier retraso antes de las 11:00 AM vía WhatsApp al +39 3391789319, indicando el nome de referencia y las fechas.\n\nDe lo contrario, la reserva será cancelada del sistema y la plaza quedará liberada.\n\n¡Gracias por su colaboración!\n\n{operatore_attivo}\nAraj Beach Club"
                 oggetto = "Confirmación de Reserva de Huéspedes - Araj Beach Club"
     
         testo_url = urllib.parse.quote(testo_base)
@@ -834,7 +840,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
             colonne_griglia = st.columns(max_posti) 
             for i in range(max_posti):
                 numero_omb = i + 1
-                record = df_range[(df_range['Ombrellone'] == numero_omb) & (df_range['Fila'] == nome_fila) & (df_range['Stato'] != 'Libero')]
+                record = df_range[(df_range['Ombrellone'] == numero_omb) & (df_range['Fila'] == nome_fila)]
                 if record.empty:
                     box_html = f"<div style='background-color: #28a745; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Libero Sempre</span></div>"
                 else:
@@ -842,7 +848,7 @@ if isinstance(data_visiva, tuple) and len(data_visiva) > 0:
                     box_html = f"<div style='background-color: #dc3545; padding: 8px; border-radius: 6px; text-align: center; color: white; margin-bottom: 5px; min-height: 90px;'><b>{numero_omb}</b><br><span style='font-size: 11px;'>Occupato {giorni_occupati}/{giorni_totali_vis}gg</span></div>"
                 colonne_griglia[i].markdown(box_html, unsafe_allow_html=True)
 
-    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA E ORDINATA)
+    # TABELLA MODIFICABILE ELENCO DETTAGLIATO (BLINDATA CON I MENU A TENDINA)
     st.divider()
     st.subheader("📋 Elenco Dettagliato (Modificabile)")
     if not df_range.empty:
