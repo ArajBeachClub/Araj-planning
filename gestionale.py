@@ -109,9 +109,9 @@ CAPIENZA_FILE = {
     "Prima Fila": 21,
     "Seconda Fila": 21,
     "Terza Fila": 12,
-    "Quarta Fila": 10,
-    "Quinta Fila": 7,
-    "Sesta Fila (Altre)": 6
+    "Quarta Fila": 8,
+    "Quinta Fila": 6,
+    "Sesta Fila (Altre)": 3
 }
 
 STAGIONI_DATE = {
